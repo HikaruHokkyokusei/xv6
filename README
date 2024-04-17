@@ -41,12 +41,16 @@ Please send errors and suggestions to Frans Kaashoek and Robert Morris
 operating system for MIT's 6.1810, so we are more interested in
 simplifications and clarifications than new features.
 
+Refer xv6 book published by MIT for detailed understanding.
+
+
 BUILDING AND RUNNING XV6
 
 You will need a RISC-V "newlib" tool chain from
 https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
 riscv64-softmmu.  Once they are installed, and in your shell
 search path, you can run "make qemu".
+
 
 ---
 CSE 506 Setup Steps (Using WSL 2 on windows with Ubuntu 22.04.4)

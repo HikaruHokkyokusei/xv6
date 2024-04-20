@@ -24,6 +24,7 @@ main(void)
   dup(0);  // stderr
 
   for(;;){
+    printf("Current CPU: %d\n", getcpu());
     printf("init: starting sh\n");
     pid = fork();
     if(pid < 0){

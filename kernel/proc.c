@@ -217,7 +217,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 
 // a user program that calls exec("/init")
 // assembled from ../user/initcode.S
-// od -t xC ../user/initcode
+// od -t xC ../user/initcode.S
 uchar initcode[] = {
   0x17, 0x05, 0x00, 0x00, 0x13, 0x05, 0x45, 0x02,
   0x97, 0x05, 0x00, 0x00, 0x93, 0x85, 0x35, 0x02,

@@ -53,3 +53,9 @@ void* malloc(uint);
 void u_lock_acquire(struct spinlock*);
 void u_lock_init(struct spinlock*, char *);
 void u_lock_release(struct spinlock*);
+
+// user/vmManager.c
+void initVMManager(void);
+int createVM(void);
+int deleteVM(int);
+void printActiveVM(void);

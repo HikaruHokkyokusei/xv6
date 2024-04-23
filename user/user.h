@@ -1,6 +1,7 @@
 #include "./../kernel/types.h"
 
 struct stat;
+struct spinlock;
 
 // system calls
 int fork(void);
@@ -45,5 +46,10 @@ void fprintf(int, const char*, ...);
 void printf(const char*, ...);
 
 // user/umalloc.c
-void free(void*);
+void free(void *);
 void* malloc(uint);
+
+// user/spinlock.c
+void u_lock_acquire(struct spinlock*);
+void u_lock_init(struct spinlock*, char *);
+void u_lock_release(struct spinlock*);

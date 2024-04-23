@@ -1,3 +1,5 @@
+#include "./../kernel/types.h"
+
 struct stat;
 
 // system calls
@@ -24,19 +26,24 @@ int sleep(int);
 int uptime(void);
 int getcpu(void);
 
-// ulib.c
-int stat(const char*, struct stat*);
+// user/ulib.c
 char* strcpy(char*, const char*);
-void *memmove(void*, const void*, int);
-char* strchr(const char*, char c);
 int strcmp(const char*, const char*);
-void fprintf(int, const char*, ...);
-void printf(const char*, ...);
-char* gets(char*, int max);
 uint strlen(const char*);
 void* memset(void*, int, uint);
-void* malloc(uint);
-void free(void*);
+char* strchr(const char*, char c);
+char* gets(char*, int max);
+int stat(const char*, struct stat*);
 int atoi(const char*);
+void *memmove(void*, const void*, int);
 int memcmp(const void *, const void *, uint);
 void *memcpy(void *, const void *, uint);
+char *strlower(char *);
+
+// user/printf.c
+void fprintf(int, const char*, ...);
+void printf(const char*, ...);
+
+// user/umalloc.c
+void free(void*);
+void* malloc(uint);

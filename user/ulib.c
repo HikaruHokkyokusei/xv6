@@ -98,12 +98,21 @@ stat(const char *n, struct stat *st)
 int
 atoi(const char *s)
 {
-  int n;
+  if (strlen(s) == 0)
+    return 0;
 
-  n = 0;
+  uint8 negate = 0;
+  if (s[0] == '-' || s[0] == '+') {
+    if (s[0] == '-')
+      negate = 1;
+    s += 1;
+  }
+
+  int n = 0;
   while('0' <= *s && *s <= '9')
     n = n*10 + *s++ - '0';
-  return n;
+
+  return negate ? -n : n;
 }
 
 void*
@@ -144,4 +153,16 @@ void *
 memcpy(void *dst, const void *src, uint n)
 {
   return memmove(dst, src, n);
+}
+
+char *
+strlower(char *str)
+{
+  for (uint i = 0; i < strlen(str); i++) {
+    if ((65 <= str[i]) && (str[i] <= 90)) {
+      str[i] += 32;
+    }
+  }
+
+  return str;
 }

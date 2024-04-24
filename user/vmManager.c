@@ -21,7 +21,7 @@ void initVMManager() {
   }
 }
 
-int createVM() {
+int createVM(char *workloadType) {
   int vmId;
   VM *vm;
 
@@ -44,9 +44,8 @@ int createVM() {
 
     vm_promote();
 
-    // TODO: Execute its code... Maybe use `exec` syscall.
-    while (1)
-      ;
+    char *params[] = {workloadType};
+    exec("/vmWorkload", params);
 
     u_lock_acquire(&self->lock);
     self->status = 0;

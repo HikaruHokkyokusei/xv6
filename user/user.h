@@ -57,6 +57,6 @@ void u_lock_release(struct spinlock*);
 
 // user/vmManager.c
 void initVMManager(void);
-int createVM(void);
+int createVM(char *);
 int deleteVM(int);
 void printActiveVM(void);

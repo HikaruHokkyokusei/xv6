@@ -34,7 +34,7 @@ int main(void) {
         goto EXIT;
 
       case 1:
-        reg1 = createVM();
+        reg1 = createVM(getUserChoice("Enter workload number: "));
         if (reg1 == -1) {
           printf("Fork Failed.\n");
         } else if (reg1 == -2) {

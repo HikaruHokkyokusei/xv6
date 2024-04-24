@@ -80,5 +80,7 @@ qemu-system-riscv64 --version
 To compile XV6, use the below command:
 
 ```shell
-cd ~/XV6 && make clean && make && make qemu
+cd ~/XV6 && make clean -s && make -s && make qemu -s && make clean -s
 ```
+
+To exit the XV6 running on QEMU, press (and release) `ctrl + A` followed by `X`.

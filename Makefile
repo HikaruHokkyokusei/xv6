@@ -29,7 +29,8 @@ OBJS = \
   $K/kernelvec.o \
   $K/plic.o \
   $K/virtio_disk.o \
-  $K/vmm.o
+  $K/vmm.o \
+  $K/hashmap.o \
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bin
@@ -116,25 +117,25 @@ mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 # http://www.gnu.org/software/make/manual/html_node/Chained-Rules.html
 .PRECIOUS: %.o
 
-UPROGS=\
-	$U/_cat\
-	$U/_echo\
-	$U/_forktest\
-	$U/_grep\
-	$U/_init\
-	$U/_kill\
-	$U/_ln\
-	$U/_ls\
-	$U/_mkdir\
-	$U/_rm\
-	$U/_sh\
-	$U/_stressfs\
-	$U/_usertests\
-	$U/_grind\
-	$U/_wc\
-	$U/_zombie\
-	$U/_printUptime\
-	$U/_emulateVM\
+UPROGS = \
+  $U/_cat \
+  $U/_echo \
+  $U/_forktest \
+  $U/_grep \
+  $U/_init \
+  $U/_kill \
+  $U/_ln \
+  $U/_ls \
+  $U/_mkdir \
+  $U/_rm \
+  $U/_sh \
+  $U/_stressfs \
+  $U/_usertests \
+  $U/_grind \
+  $U/_wc \
+  $U/_zombie \
+  $U/_printUptime \
+  $U/_emulateVM \
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

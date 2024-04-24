@@ -8,6 +8,8 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+typedef struct ENTRY_NODE ENTRY_NODE;
+typedef struct HASHMAP HASHMAP;
 
 // bio.c
 void            binit(void);
@@ -177,6 +179,14 @@ int             copyinstr(pagetable_t, char *, uint64, uint64);
 // vmm.c
 void            vmminit(void);
 void            randomSampling(void);
+
+// hashmap.c
+void init_hashmap(HASHMAP *);
+int hashmap_get(HASHMAP *, int, void **);
+void hashmap_put(HASHMAP *, int, void *);
+void hashmap_delete(HASHMAP *, int);
+void hashmap_iterate(HASHMAP *, void (*)(int, void *));
+void hashmap_free(HASHMAP *);
 
 // plic.c
 void            plicinit(void);

@@ -12,3 +12,4 @@
 #define FSSIZE                  2000  // size of file system in blocks
 #define MAXPATH                  128  // maximum file path name
 #define VMMRANDTICKS             100  // Number of ticks to wait for during random sampling
+#define HASH_MAP_SIZE            251  // NUmber of buckets/slots in the hashmap

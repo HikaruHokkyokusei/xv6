@@ -42,6 +42,8 @@ int createVM() {
     // Child VM
     VM *self = vm;
 
+    vm_promote();
+
     // TODO: Execute its code... Maybe use `exec` syscall.
     while (1)
       ;
@@ -49,6 +51,8 @@ int createVM() {
     u_lock_acquire(&self->lock);
     self->status = 0;
     u_lock_release(&self->lock);
+
+    // TODO: Demote the VM...
     exit(0);
   }
 

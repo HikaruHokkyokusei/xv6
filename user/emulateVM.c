@@ -2,19 +2,22 @@
 #include "./../user/user.h"
 
 char rawInp[512];
-int getUserChoice(char *prompt) {
-  if (prompt == 0x0)
-    printf("\n\nMenu:\n"
-           "-1. Exit\n"
-           " 1. Create New VM\n"
-           " 2. Delete a VM\n"
-           " 3. Print active VM\n"
-           "> ");
-  else {
+char *getUserChoice(char *prompt) {
+  if (prompt != 0x0)
     printf(prompt);
-  }
+  return gets(rawInp, 512);
+}
 
-  return atoi(gets(rawInp, 512));
+int getUserChoiceInt(char *prompt) {
+  if (prompt == 0x0)
+    prompt = "\n\nMenu:\n"
+             "-1. Exit\n"
+             " 1. Create New VM\n"
+             " 2. Delete a VM\n"
+             " 3. Print active VM\n"
+             "> ";
+
+  return atoi(getUserChoice(prompt));
 }
 
 int main(void) {
@@ -24,7 +27,7 @@ int main(void) {
 
   int choice;
   for (;;) {
-    choice = getUserChoice(0x0);
+    choice = getUserChoiceInt(0x0);
     switch (choice) {
       case -1:
         printf("Exiting...\n");
@@ -42,7 +45,7 @@ int main(void) {
         break;
 
       case 2:
-        reg1 = deleteVM(getUserChoice("Enter VM Id to delete: "));
+        reg1 = deleteVM(getUserChoiceInt("Enter VM Id to delete: "));
         if (reg1 == -1) {
           printf("Invalid Index.\n");
         } else if (reg1 == 0) {

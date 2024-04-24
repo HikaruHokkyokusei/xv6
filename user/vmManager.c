@@ -42,16 +42,22 @@ int createVM(char *workloadType) {
     // Child VM
     VM *self = vm;
 
-    vm_promote();
+    int res = vm_promote(getpid());
+    if (res == -1) {
+      printf("Unauthorized call to be promoted to a VM.\n");
+      goto FORK_END;
+    }
 
     char *params[] = {workloadType};
     exec("/vmWorkload", params);
 
+    // TODO: Demote the VM...
+
+    FORK_END:
     u_lock_acquire(&self->lock);
     self->status = 0;
     u_lock_release(&self->lock);
 
-    // TODO: Demote the VM...
     exit(0);
   }
 

@@ -177,7 +177,7 @@ int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 
 // vmm.c
-void            vmminit(void);
+void            vmmInit(void);
 void            randomSampling(void);
 
 // hashmap.c

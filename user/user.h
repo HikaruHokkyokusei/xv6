@@ -26,6 +26,7 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int getcpu(void);
+int vm_promote(void);
 
 // user/ulib.c
 char* strcpy(char*, const char*);

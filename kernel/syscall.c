@@ -47,16 +47,16 @@ argraw(int n)
     return p->trapframe->a4;
   case 5:
     return p->trapframe->a5;
+  default:
+    panic("argraw");
   }
-  panic("argraw");
-  return -1;
 }
 
 // Fetch the nth 32-bit system call argument.
 void
 argint(int n, int *ip)
 {
-  *ip = argraw(n);
+  *ip = (int) argraw(n);
 }
 
 // Retrieve an argument as a pointer.
@@ -102,6 +102,7 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_getcpu(void);
+extern uint64 sys_vm_promote(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -128,6 +129,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_mkdir]           = sys_mkdir,
 [SYS_close]           = sys_close,
 [SYS_getcpu]          = sys_getcpu,
+[SYS_vm_promote]      = sys_vm_promote,
 };
 
 void

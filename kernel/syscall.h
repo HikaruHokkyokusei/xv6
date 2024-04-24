@@ -21,3 +21,4 @@
 #define SYS_mkdir            20
 #define SYS_close            21
 #define SYS_getcpu           22
+#define SYS_vm_promote       23

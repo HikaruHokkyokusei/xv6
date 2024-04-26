@@ -37,6 +37,17 @@ void randomSampling() {
   release(&vmmLastSamplingTimeLock);
 }
 
+void printRegisteredVM(int key, void *value) {
+  struct proc *p = (struct proc *) value;
+  printf("PID: %d --> VM: (%d->%d, %p)\n", key, p->parent->pid, p->pid, p);
+}
+
+void printRegisteredVMs() {
+  printf("\nRegistered VMs:\n");
+  hashmap_iterate(&registeredVMs, printRegisteredVM);
+  printf("\n");
+}
+
 int sys_vm_promote() {
   struct proc *p = myproc();
   int pid;

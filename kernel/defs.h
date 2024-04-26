@@ -87,6 +87,7 @@ void            printfinit(void);
 int             cpuid(void);
 void            exit(int);
 int             fork(void);
+struct proc*    get_proc_from_pid(int);
 int             growproc(int);
 void            proc_mapstacks(pagetable_t);
 pagetable_t     proc_pagetable(struct proc *);

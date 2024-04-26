@@ -325,6 +325,19 @@ fork(void)
   return pid;
 }
 
+struct proc *get_proc_from_pid(int pid) {
+  struct proc *p;
+  for (p = proc; p < &proc[NPROC]; p++) {
+    if (p->pid == pid) {
+      goto FOUND;
+    }
+  }
+  return 0x0;
+
+  FOUND:
+  return p;
+}
+
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
 void

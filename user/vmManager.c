@@ -21,6 +21,25 @@ void initVMManager() {
   }
 }
 
+uint8 killVM(VM *vm, int acc, int rel) {
+  if (acc)
+    u_lock_acquire(&vm->lock);
+
+  uint8 res = 0;
+  if (vm->status != 0) {
+    vm_demote(vm->pid);
+    kill(vm->pid);
+    vm->pid = -1;
+    vm->status = 0;
+    res = 1;
+  }
+
+  if (rel)
+    u_lock_release(&vm->lock);
+
+  return res;
+}
+
 int createVM(char *workloadType) {
   int vmId;
   VM *vm;
@@ -32,8 +51,7 @@ int createVM(char *workloadType) {
     }
     u_lock_release(&vm->lock);
   }
-
-  return -2;
+  return -2; // Max VMs created.
 
   FOUND:
   vmId = fork();
@@ -41,34 +59,31 @@ int createVM(char *workloadType) {
   if (vmId == 0) {
     // Child VM
     VM *self = vm;
-
-    int res = vm_promote(getpid());
-    if (res == -1) {
-      printf("Unauthorized call to be promoted to a VM.\n");
-      goto FORK_END;
-    }
+    while (self->status != 1) ;
 
     char *params[] = {workloadType};
     exec("/vmWorkload", params);
 
-    // TODO: Demote the VM...
-
-    FORK_END:
-    u_lock_acquire(&self->lock);
-    self->status = 0;
-    u_lock_release(&self->lock);
-
+    killVM(self, 1, 1);
     exit(0);
   }
 
   if (vmId > 0) {
     // Parent Process. Only executed if Fork was successful.
     vm->pid = vmId;
-    vm->status = 1;
+
+    int res = vm_promote(vmId);
+    if (res <= 0) {
+      printf("VM Registration failed. Error code: %d.\n", res);
+      killVM(vm, 0, 1);
+      vmId = 0;
+    } else {
+      vm->status = 1;
+    }
   }
 
   u_lock_release(&vm->lock);
-  return vmId;
+  return vmId; // -1 If fork was unsuccessful else returns the id of the fork.
 }
 
 int deleteVM(int vmIdx) {
@@ -76,21 +91,7 @@ int deleteVM(int vmIdx) {
     return -1;
   }
 
-  uint8 res;
-  VM *vm = &vmHolder[vmIdx];
-
-  u_lock_acquire(&vm->lock);
-  if (vm->status == 0) {
-    res = 0;
-  } else {
-    kill(vm->pid);
-    vm->pid = -1;
-    vm->status = 0;
-    res = 1;
-  }
-  u_lock_release(&vm->lock);
-
-  return res;
+  return killVM(&vmHolder[vmIdx], 1, 1);
 }
 
 void printActiveVM() {

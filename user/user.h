@@ -26,7 +26,8 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int getcpu(void);
-int vm_promote(void);
+int vm_promote(int);
+int vm_demote(int);
 
 // user/ulib.c
 char* strcpy(char*, const char*);
@@ -57,6 +58,6 @@ void u_lock_release(struct spinlock*);
 
 // user/vmManager.c
 void initVMManager(void);
-int createVM(void);
+int createVM(char *);
 int deleteVM(int);
 void printActiveVM(void);

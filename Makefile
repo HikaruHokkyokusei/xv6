@@ -136,6 +136,7 @@ UPROGS = \
   $U/_zombie \
   $U/_printUptime \
   $U/_emulateVM \
+  $U/_vmWorkload \
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

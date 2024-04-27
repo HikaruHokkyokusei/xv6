@@ -22,3 +22,4 @@
 #define SYS_close            21
 #define SYS_getcpu           22
 #define SYS_vm_promote       23
+#define SYS_vm_demote        24

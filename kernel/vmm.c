@@ -29,7 +29,8 @@ void vmmInit() {
 void randomSampling() {
   acquire(&vmmLastSamplingTimeLock);
   uint currTime = getCurrTime();
-  if (currTime - lastMemorySamplingTime >= VMMRANDTICKS) {
+  uint64 timeDiff = currTime - lastMemorySamplingTime;
+  if (((lastMemorySamplingTime == 0) && (timeDiff >= 100)) || (timeDiff >= VMMRANDTICKS)) {
 //    printf("%d -> %d <--> Performing random sampling...\n", lastMemorySamplingTime, currTime);
     lastMemorySamplingTime = currTime;
     // TODO: Code for random sampling

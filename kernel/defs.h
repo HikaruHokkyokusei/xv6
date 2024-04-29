@@ -8,7 +8,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
-typedef struct ENTRY_NODE ENTRY_NODE;
+typedef struct HASHMAP_ENTRY_NODE HASHMAP_ENTRY_NODE;
 typedef struct HASHMAP HASHMAP;
 
 // bio.c

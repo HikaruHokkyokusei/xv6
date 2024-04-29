@@ -94,3 +94,19 @@ uint64
 sys_getcpu(void) {
   return cpuid();
 }
+
+uint64
+sys_va2pa(void) {
+  uint64 va;
+  argaddr(0, &va);
+
+  int shouldPrint;
+  argint(1, &shouldPrint);
+
+  struct proc *p = myproc();
+  uint64 pa = va2pa(p->pagetable, va);
+
+  if (shouldPrint == 1)
+    printf("Data: %d\n", *(uint32 *) pa);
+  return pa;
+}

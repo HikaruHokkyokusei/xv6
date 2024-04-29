@@ -104,6 +104,7 @@ extern uint64 sys_close(void);
 extern uint64 sys_getcpu(void);
 extern uint64 sys_vm_promote(void);
 extern uint64 sys_vm_demote(void);
+extern uint64 sys_va2pa(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -132,6 +133,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_getcpu]          = sys_getcpu,
 [SYS_vm_promote]      = sys_vm_promote,
 [SYS_vm_demote]       = sys_vm_demote,
+[SYS_va2pa]           = sys_va2pa,
 };
 
 void

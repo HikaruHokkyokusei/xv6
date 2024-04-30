@@ -1,15 +1,6 @@
 #include "./../kernel/types.h"
-#include "./../kernel/spinlock.h"
+#include "./../user/vm.h"
 #include "./../user/user.h"
-
-#define MAX_VM 10
-
-typedef struct VM {
-    struct spinlock lock;
-
-    int pid;
-    int status; // 0 => Uninitialized or Killed; 1 => Active;
-} VM;
 
 static VM vmHolder[MAX_VM];
 

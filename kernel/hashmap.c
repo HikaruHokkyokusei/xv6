@@ -6,7 +6,7 @@
 #include "defs.h"
 
 uint hash(int key) {
-  return key % HASH_MAP_SIZE;
+  return key % HASHMAP_SIZE;
 }
 
 void init_hashmap(HASHMAP *h) {
@@ -14,20 +14,20 @@ void init_hashmap(HASHMAP *h) {
   acquire(&h->lock);
   h->size = 0;
   // Initialize all `HASH_MAP_SIZE` number of `buckets` to NULL address.
-  for (uint i = 0; i < HASH_MAP_SIZE; i++) {
+  for (uint i = 0; i < HASHMAP_SIZE; i++) {
     h->entries[i] = 0x0;
   }
   release(&h->lock);
 }
 
-ENTRY_NODE *get_hashmap_entry(HASHMAP *h, int key) {
+HASHMAP_ENTRY_NODE *get_hashmap_entry(HASHMAP *h, int key) {
   push_off();
   int locked = holding(&h->lock);
   pop_off();
   if (locked == 0) {
     return 0x0;
   }
-  ENTRY_NODE *entry = h->entries[hash(key)];
+  HASHMAP_ENTRY_NODE *entry = h->entries[hash(key)];
   while (entry != 0x0) {
     if (entry->key == key) {
       return entry;
@@ -40,7 +40,7 @@ ENTRY_NODE *get_hashmap_entry(HASHMAP *h, int key) {
 int hashmap_get(HASHMAP *h, int key, void **value) {
   int ret = 0;
   acquire(&h->lock);
-  ENTRY_NODE *entry = get_hashmap_entry(h, key);
+  HASHMAP_ENTRY_NODE *entry = get_hashmap_entry(h, key);
   if (entry != 0x0) {
     *value = entry->value;
     ret = 1;
@@ -52,7 +52,7 @@ int hashmap_get(HASHMAP *h, int key, void **value) {
 void hashmap_put(HASHMAP *h, int key, void *value) {
   acquire(&h->lock);
   uint slot = hash(key);
-  ENTRY_NODE *entry = h->entries[slot];
+  HASHMAP_ENTRY_NODE *entry = h->entries[slot];
 
   while (entry != 0x0) {
     if (entry->key == key) {
@@ -61,8 +61,8 @@ void hashmap_put(HASHMAP *h, int key, void *value) {
     entry = entry->next;
   }
 
-  // Key does not exist, create a new ENTRY_NODE
-  if ((entry = ((ENTRY_NODE *) kalloc())) == 0x0) {
+  // Key does not exist, create a new HASHMAP_ENTRY_NODE
+  if ((entry = ((HASHMAP_ENTRY_NODE *) kalloc())) == 0x0) {
     if (entry) // Unnecessary, but kept to prevent IDE warning.
       kfree(entry);
     panic("Unable to allocate memory...");
@@ -80,8 +80,8 @@ void hashmap_put(HASHMAP *h, int key, void *value) {
 void hashmap_delete(HASHMAP *h, int key) {
   acquire(&h->lock);
   uint slot = hash(key);
-  ENTRY_NODE *entry = h->entries[slot];
-  ENTRY_NODE *prev = entry;
+  HASHMAP_ENTRY_NODE *entry = h->entries[slot];
+  HASHMAP_ENTRY_NODE *prev = entry;
   while (entry != 0x0) {
     if (entry->key == key) {
       if (prev == entry)
@@ -99,8 +99,8 @@ void hashmap_delete(HASHMAP *h, int key) {
 
 void hashmap_iterate(HASHMAP *h, void (*operate)(int, void *)) {
   acquire(&h->lock);
-  ENTRY_NODE *entry;
-  for (uint i = 0; i < HASH_MAP_SIZE; i++) {
+  HASHMAP_ENTRY_NODE *entry;
+  for (uint i = 0; i < HASHMAP_SIZE; i++) {
     entry = h->entries[i];
     while (entry) {
       operate(entry->key, entry->value);
@@ -120,10 +120,10 @@ void hashmap_free(HASHMAP *h) {
   // errors. For the project, this is not the main focus.
   // Therefore, this is being ignored.
   acquire(&h->lock);
-  for (uint i = 0; i < HASH_MAP_SIZE; i++) {
-    ENTRY_NODE *entry = h->entries[i];
+  for (uint i = 0; i < HASHMAP_SIZE; i++) {
+    HASHMAP_ENTRY_NODE *entry = h->entries[i];
     while (entry) {
-      ENTRY_NODE *temp = entry;
+      HASHMAP_ENTRY_NODE *temp = entry;
       entry = entry->next;
       kfree(temp);
     }

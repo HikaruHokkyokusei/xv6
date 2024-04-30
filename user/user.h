@@ -28,6 +28,7 @@ int uptime(void);
 int getcpu(void);
 int vm_promote(int);
 int vm_demote(int);
+int va2pa(uint64, uint8);
 
 // user/ulib.c
 char* strcpy(char*, const char*);

@@ -8,8 +8,10 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
-typedef struct ENTRY_NODE ENTRY_NODE;
+typedef struct HASHMAP_ENTRY_NODE HASHMAP_ENTRY_NODE;
+typedef struct PAGE_HASHMAP_ENTRY_NODE PAGE_HASHMAP_ENTRY_NODE;
 typedef struct HASHMAP HASHMAP;
+typedef struct PAGE_HASHMAP PAGE_HASHMAP;
 
 // bio.c
 void            binit(void);
@@ -173,6 +175,7 @@ void            uvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);
 pte_t *         walk(pagetable_t, uint64, int);
 uint64          walkaddr(pagetable_t, uint64);
+uint64          va2pa(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
@@ -182,12 +185,20 @@ void            vmmInit(void);
 void            randomSampling(void);
 
 // hashmap.c
-void init_hashmap(HASHMAP *);
-int hashmap_get(HASHMAP *, int, void **);
-void hashmap_put(HASHMAP *, int, void *);
-void hashmap_delete(HASHMAP *, int);
-void hashmap_iterate(HASHMAP *, void (*)(int, void *));
-void hashmap_free(HASHMAP *);
+void            init_hashmap(HASHMAP *);
+int             hashmap_get(HASHMAP *, int, void **);
+void            hashmap_put(HASHMAP *, int, void *);
+void            hashmap_delete(HASHMAP *, int);
+void            hashmap_iterate(HASHMAP *, void (*)(int, void *));
+void            hashmap_free(HASHMAP *);
+
+// hashmapPage.c
+void            init_pageHashmap(PAGE_HASHMAP *);
+int             pageHashmap_get(PAGE_HASHMAP *, uint64, void **);
+void            pageHashmap_put(PAGE_HASHMAP *, uint64, void *);
+void            pageHashmap_delete(PAGE_HASHMAP *, uint64);
+void            pageHashmap_iterate(PAGE_HASHMAP *, void (*)(uint64, void *));
+void            pageHashmap_free(PAGE_HASHMAP *);
 
 // plic.c
 void            plicinit(void);

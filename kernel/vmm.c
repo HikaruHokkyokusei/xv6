@@ -5,12 +5,10 @@
 #include "proc.h"
 #include "hashmap.h"
 #include "hashmapPage.h"
+#include "vmm.h"
 #include "defs.h"
 
-struct spinlock vmmLastSamplingTimeLock;
-uint lastMemorySamplingTime = 0;
-
-HASHMAP registeredVMs;
+static VMM_STATE vmmState;
 
 uint getCurrTime() {
   acquire(&tickslock);
@@ -20,23 +18,24 @@ uint getCurrTime() {
 }
 
 void vmmInit() {
-  initlock(&vmmLastSamplingTimeLock, "VMM Mem sampling time lock");
-  init_hashmap(&registeredVMs);
-  acquire(&vmmLastSamplingTimeLock);
-  lastMemorySamplingTime = getCurrTime();
-  release(&vmmLastSamplingTimeLock);
+  initlock(&vmmState.samplingTimeLock, "VMM Mem sampling time lock");
+  init_hashmap(&vmmState.registeredVMs);
+  init_pageHashmap(&vmmState.knownPages);
+  acquire(&vmmState.samplingTimeLock);
+  vmmState.lastSamplingTime = getCurrTime();
+  release(&vmmState.samplingTimeLock);
 }
 
 void randomSampling() {
-  acquire(&vmmLastSamplingTimeLock);
+  acquire(&vmmState.samplingTimeLock);
   uint currTime = getCurrTime();
-  uint64 timeDiff = currTime - lastMemorySamplingTime;
-  if (((lastMemorySamplingTime == 0) && (timeDiff >= 100)) || (timeDiff >= VMMRANDTICKS)) {
+  uint64 timeDiff = currTime - vmmState.lastSamplingTime;
+  if (((vmmState.lastSamplingTime == 0) && (timeDiff >= 100)) || (timeDiff >= VMMRANDTICKS)) {
 //    printf("%d -> %d <--> Performing random sampling...\n", lastMemorySamplingTime, currTime);
-    lastMemorySamplingTime = currTime;
+    vmmState.lastSamplingTime = currTime;
     // TODO: Code for random sampling
   }
-  release(&vmmLastSamplingTimeLock);
+  release(&vmmState.samplingTimeLock);
 }
 
 void printRegisteredVM(int key, void *value) {
@@ -46,7 +45,7 @@ void printRegisteredVM(int key, void *value) {
 
 void printRegisteredVMs() {
   printf("\nRegistered VMs:\n");
-  hashmap_iterate(&registeredVMs, printRegisteredVM);
+  hashmap_iterate(&vmmState.registeredVMs, printRegisteredVM);
   printf("\n");
 }
 
@@ -61,10 +60,10 @@ int sys_vm_promote() {
   if ((c->parent == 0x0) || (c->parent->pid != pp->pid))
     return -1; // Only a parent is allowed to request its child process to be promoted to a VM.
 
-  if (hashmap_get(&registeredVMs, childPid, (void **) &pp) == 1)
+  if (hashmap_get(&vmmState.registeredVMs, childPid, (void **) &pp) == 1)
     return 0; // VM is already registered.
 
-  hashmap_put(&registeredVMs, childPid, c);
+  hashmap_put(&vmmState.registeredVMs, childPid, c);
 
 //  printRegisteredVMs();
   return 1;
@@ -85,10 +84,10 @@ int sys_vm_demote() {
     return -1; // Only a parent or the child itself is allowed to request for the VM to be demoted.
 
   UNREGISTER:
-  if (hashmap_get(&registeredVMs, childPid, (void **) &pp) == 0)
+  if (hashmap_get(&vmmState.registeredVMs, childPid, (void **) &pp) == 0)
     return 0; // VM is already unregistered.
 
-  hashmap_delete(&registeredVMs, childPid);
+  hashmap_delete(&vmmState.registeredVMs, childPid);
 
 //  printRegisteredVMs();
   return 1;

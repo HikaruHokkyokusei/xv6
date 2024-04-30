@@ -4,6 +4,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "hashmap.h"
+#include "hashmapPage.h"
 #include "defs.h"
 
 struct spinlock vmmLastSamplingTimeLock;

@@ -13,3 +13,4 @@
 #define MAXPATH                  128  // maximum file path name
 #define VMMRANDTICKS            1000  // Number of ticks to wait for during random sampling
 #define HASHMAP_SIZE             251  // NUmber of buckets/slots in the normal hashmap
+#define PAGE_HASHMAP_SIZE        251  // NUmber of buckets/slots in the page hashmap

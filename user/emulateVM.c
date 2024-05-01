@@ -23,9 +23,7 @@ int getUserChoiceInt(char *prompt) {
 int main(void) {
   initVMManager();
 
-  int reg1;
-
-  int choice;
+  int choice, reg1;
   for (;;) {
     choice = getUserChoiceInt(0x0);
     switch (choice) {

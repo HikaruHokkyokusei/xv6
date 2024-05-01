@@ -22,7 +22,10 @@ main(int argc, char *argv[])
     exit(0);
   }
 
-  switch (atoi(argv[1])) {
+  int workload = atoi(argv[1]);
+  printf("Executing workload: %d\n", workload);
+
+  switch (workload) {
     case 0:
       workload0();
       break;

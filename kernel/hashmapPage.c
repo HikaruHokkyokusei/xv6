@@ -21,9 +21,9 @@ uint hashPage(uint64 pa) {
 
 uint8 pageEq(uint64 pa1, uint64 pa2) {
   if (PGROUNDDOWN(pa1) != pa1)
-    panic("pa1 is not not base the base PA of the page.");
+    panic("pa1 is not the base PA of the page.");
   if (PGROUNDDOWN(pa2) != pa2)
-    panic("pa2 is not not base the base PA of the page.");
+    panic("pa2 is not the base PA of the page.");
 
   if (pa1 == pa2)
     return 1;
@@ -67,7 +67,7 @@ PAGE_HASHMAP_ENTRY_NODE *get_page_hashmap_entry(PAGE_HASHMAP *h, uint64 key) {
 
 int pageHashmap_get(PAGE_HASHMAP *h, uint64 key, void **value) {
   if (PGROUNDDOWN(key) != key)
-    panic("Key is not not base the base PA of the page.");
+    panic("Key is not the base PA of the page.");
   int ret = 0;
   acquire(&h->lock);
   PAGE_HASHMAP_ENTRY_NODE *entry = get_page_hashmap_entry(h, key);

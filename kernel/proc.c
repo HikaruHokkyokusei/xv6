@@ -253,6 +253,11 @@ growproc(int n) {
 
   sz = p->sz;
   if (n > 0) {
+    /* Different paging modes can be enabled by changing the below `if` condition:
+     *
+     * 1. `(sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0` -- Default Prefetching
+     * 2. `(sz = demand_alloc(p->pagetable, sz, sz + n)) == 0`    -- Demand Paging
+     */
     if ((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0) {
       return -1;
     }

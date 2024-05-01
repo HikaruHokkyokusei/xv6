@@ -19,10 +19,12 @@ uint8 killVM(VM *vm, int acc, int rel) {
   uint8 res = 0;
   if (vm->status != 0) {
     vm_demote(vm->pid);
-    kill(vm->pid);
-    vm->pid = -1;
-    vm->status = 0;
-    res = 1;
+    // If kill fails, then res will be set to -1.
+    if ((res = kill(vm->pid)) == 0) {
+      vm->pid = -1;
+      vm->status = 0;
+      res = 1;
+    }
   }
 
   if (rel)
@@ -31,46 +33,52 @@ uint8 killVM(VM *vm, int acc, int rel) {
   return res;
 }
 
-int createVM(char *workloadType) {
-  int vmId;
-  VM *vm;
-
-  for (vm = vmHolder; vm < &vmHolder[MAX_VM]; vm++) {
+VM *findAndLockVMSlot() {
+  for (VM *vm = vmHolder; vm < &vmHolder[MAX_VM]; vm += 1) {
     u_lock_acquire(&vm->lock);
     if (vm->status == 0) {
-      goto FOUND;
+      return vm;
     }
     u_lock_release(&vm->lock);
   }
-  return -2; // Max VMs created.
+  return 0x0;
+}
 
-  FOUND:
-  vmId = fork();
+void childProcess(char *workloadType) {
+  // Note that after fork, the parent `vm` and child `vm`
+  // have the same VA but DIFFERENT PA.
+  char *params[] = {"vmWorkload", workloadType, 0};
+  int res = exec("vmWorkload", params);
+  printf("Workload exec failed: %d\n", res);
+}
 
-  if (vmId == 0) {
-    // Child VM
-    VM *self = vm;
-    while (self->status != 1) ;
+int parentProcess(VM *vm, int vmId, int sleepDuration) {
+  if (sleepDuration > 0) { sleep(sleepDuration); }
+  vm->pid = vmId;
 
-    char *params[] = {workloadType};
-    exec("/vmWorkload", params);
-
-    killVM(self, 1, 1);
-    exit(0);
+  int res;
+  if ((res = vm_promote(vmId)) <= 0) {
+    printf("VM Registration failed. Error code: %d.\n", res);
+    killVM(vm, 0, 0);
+    return 0;
+  } else {
+    vm->status = 1;
   }
 
-  if (vmId > 0) {
-    // Parent Process. Only executed if Fork was successful.
-    vm->pid = vmId;
+  return 1;
+}
 
-    int res = vm_promote(vmId);
-    if (res <= 0) {
-      printf("VM Registration failed. Error code: %d.\n", res);
-      killVM(vm, 0, 1);
+int createVM(char *workloadType) {
+  VM *vm = findAndLockVMSlot();
+  if (vm == 0x0) { return -2; } // Max VMs created.
+
+  int vmId = fork();
+  if (vmId == 0) {
+    childProcess(workloadType);
+    exit(0);
+  } else if (vmId > 0) {
+    if (parentProcess(vm, vmId, 5) == 0)
       vmId = 0;
-    } else {
-      vm->status = 1;
-    }
   }
 
   u_lock_release(&vm->lock);

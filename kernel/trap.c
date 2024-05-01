@@ -38,26 +38,20 @@ usertrap(void) {
   if ((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
 
-  // send interrupts and exceptions to kerneltrap(),
-  // since we're now in the kernel.
+  // send interrupts and exceptions to kerneltrap() since we're now in the kernel.
   w_stvec((uint64) kernelvec);
 
   struct proc *p = myproc();
+  p->trapframe->epc = r_sepc(); // save user program counter.
 
-  // save user program counter.
-  p->trapframe->epc = r_sepc();
-
-  if (r_scause() == 8) {
-    // system call
-
+  if (r_scause() == 0x8) { // system call
     if (killed(p))
       exit(-1);
 
-    // sepc points to the ecall instruction,
-    // but we want to return to the next instruction.
+    // sepc points to the ecall instruction, but we want to return to the next instruction.
     p->trapframe->epc += 4;
 
-    // an interrupt will change sepc, scause, and sstatus,
+    // An interrupt will change sepc, scause, and sstatus,
     // so enable only now that we're done with those registers.
     intr_on();
 
@@ -65,8 +59,10 @@ usertrap(void) {
   } else if ((which_dev = devintr()) != 0) {
     // ok
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    printf("usertrap(): unexpected scause=%p pid=%d\n"
+           "            sepc=%p stval=%p\n",
+           r_scause(), p->pid, r_sepc(), r_stval()
+    );
     setkilled(p);
   }
 
@@ -80,9 +76,7 @@ usertrap(void) {
   usertrapret();
 }
 
-//
 // return to user space
-//
 void
 usertrapret(void) {
   struct proc *p = myproc();

@@ -159,6 +159,8 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm) {
 
   a = PGROUNDDOWN(va);
   last = PGROUNDDOWN(va + size - 1);
+
+  if (walkaddr(pagetable, a) == PRE_KERNEL_ADDRESS) { uvmunmap(pagetable, a, 1, 0); }
   for (;;) {
     if ((pte = walk(pagetable, a, 1)) == 0)
       return -1;
@@ -177,13 +179,11 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm) {
 // The mappings must exist. Optionally free the physical memory.
 void
 uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
-  uint64 a;
-  pte_t *pte;
-
   if ((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
 
-  for (a = va; a < va + npages * PGSIZE; a += PGSIZE) {
+  pte_t *pte;
+  for (uint64 a = va; a < va + npages * PGSIZE; a += PGSIZE) {
     if ((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
     if ((*pte & PTE_V) == 0)
@@ -192,7 +192,9 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
       panic("uvmunmap: not a leaf");
     if (do_free) {
       uint64 pa = PTE2PA(*pte);
-      kfree((void *) pa);
+      if (pa != PRE_KERNEL_ADDRESS) {
+        kfree((void *) pa);
+      }
     }
     *pte = 0;
   }
@@ -432,4 +434,21 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max) {
   } else {
     return -1;
   }
+}
+
+// See `int growproc(int);` in `proc.c`. Search `demand_alloc` to see
+// how to enable the usage of this function.
+uint64
+demand_alloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
+  if (newsz < oldsz)
+    return oldsz;
+  oldsz = PGROUNDUP(oldsz);
+
+  for (uint64 currsz = oldsz; currsz < newsz; currsz += PGSIZE) {
+    if (mappages(pagetable, currsz, PGSIZE, PRE_KERNEL_ADDRESS, PTE_U | PTE_R) != 0) {
+      uvmdealloc(pagetable, currsz, oldsz);
+    }
+  }
+
+  return newsz;
 }

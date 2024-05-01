@@ -56,9 +56,21 @@ usertrap(void) {
     intr_on();
 
     syscall();
-  } else if ((which_dev = devintr()) != 0) {
-    // ok
+  } else if ((which_dev = devintr()) != 0) { // Ok
+  } else if (r_scause() == 0xF) { // Handle Write Page Fault
+    uint64 va = (uint64) r_stval();
+    char *demandedPage;
+    if ((va >= MAXVA) || (walkaddr(p->pagetable, va) != PRE_KERNEL_ADDRESS)) {
+      goto UNKNOWN; // Trap not caused by Demand Paging...
+    } else if ((demandedPage = kalloc()) == 0x0) {
+      printf("System out of RAM. Killing process: %d\n", p->pid);
+      setkilled(p); // Out of RAM. Kill the user process...
+    } else if (mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64) demandedPage, PTE_R | PTE_U | PTE_W) != 0) {
+      kfree(demandedPage);
+      panic("mappages() failed!");
+    }
   } else {
+    UNKNOWN:
     printf("usertrap(): unexpected scause=%p pid=%d\n"
            "            sepc=%p stval=%p\n",
            r_scause(), p->pid, r_sepc(), r_stval()

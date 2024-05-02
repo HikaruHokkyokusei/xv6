@@ -3,7 +3,7 @@
 // a prime number to reduce the probability of collision.
 
 typedef struct HASHMAP_ENTRY_NODE {
-    int key;
+    uint64 key;
     void *value;
     struct HASHMAP_ENTRY_NODE *next;
 } HASHMAP_ENTRY_NODE;

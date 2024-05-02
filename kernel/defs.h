@@ -187,10 +187,10 @@ void            randomSampling(void);
 
 // hashmap.c
 void            init_hashmap(HASHMAP *);
-int             hashmap_get(HASHMAP *, int, void **);
-void            hashmap_put(HASHMAP *, int, void *);
-void            hashmap_delete(HASHMAP *, int);
-void            hashmap_iterate(HASHMAP *, void (*)(int, void *));
+int             hashmap_get(HASHMAP *, uint64, void **);
+void            hashmap_put(HASHMAP *, uint64, void *);
+void            hashmap_delete(HASHMAP *, uint64);
+void            hashmap_iterate(HASHMAP *, void (*)(uint64, void *));
 void            hashmap_free(HASHMAP *);
 
 // hashmapPage.c

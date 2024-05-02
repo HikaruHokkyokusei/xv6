@@ -5,7 +5,7 @@
 #include "hashmap.h"
 #include "defs.h"
 
-uint hash(int key) {
+uint hash(uint64 key) {
   return key % HASHMAP_SIZE;
 }
 
@@ -20,7 +20,7 @@ void init_hashmap(HASHMAP *h) {
   release(&h->lock);
 }
 
-HASHMAP_ENTRY_NODE *get_hashmap_entry(HASHMAP *h, int key) {
+HASHMAP_ENTRY_NODE *get_hashmap_entry(HASHMAP *h, uint64 key) {
   push_off();
   int locked = holding(&h->lock);
   pop_off();
@@ -37,7 +37,7 @@ HASHMAP_ENTRY_NODE *get_hashmap_entry(HASHMAP *h, int key) {
   return 0x0;
 }
 
-int hashmap_get(HASHMAP *h, int key, void **value) {
+int hashmap_get(HASHMAP *h, uint64 key, void **value) {
   int ret = 0;
   acquire(&h->lock);
   HASHMAP_ENTRY_NODE *entry = get_hashmap_entry(h, key);
@@ -49,7 +49,7 @@ int hashmap_get(HASHMAP *h, int key, void **value) {
   return ret;
 }
 
-void hashmap_put(HASHMAP *h, int key, void *value) {
+void hashmap_put(HASHMAP *h, uint64 key, void *value) {
   acquire(&h->lock);
   uint slot = hash(key);
   HASHMAP_ENTRY_NODE *entry = h->entries[slot];
@@ -77,7 +77,7 @@ void hashmap_put(HASHMAP *h, int key, void *value) {
   release(&h->lock);
 }
 
-void hashmap_delete(HASHMAP *h, int key) {
+void hashmap_delete(HASHMAP *h, uint64 key) {
   acquire(&h->lock);
   uint slot = hash(key);
   HASHMAP_ENTRY_NODE *entry = h->entries[slot];
@@ -97,7 +97,7 @@ void hashmap_delete(HASHMAP *h, int key) {
   release(&h->lock);
 }
 
-void hashmap_iterate(HASHMAP *h, void (*operate)(int, void *)) {
+void hashmap_iterate(HASHMAP *h, void (*operate)(uint64, void *)) {
   acquire(&h->lock);
   HASHMAP_ENTRY_NODE *entry;
   for (uint i = 0; i < HASHMAP_SIZE; i++) {

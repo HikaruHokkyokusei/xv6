@@ -44,7 +44,9 @@ usertrap(void) {
   struct proc *p = myproc();
   p->trapframe->epc = r_sepc(); // save user program counter.
 
-  if (r_scause() == 0x8) { // system call
+  uint64 scause = r_scause();
+
+  if (scause == 0x8) { // system call
     if (killed(p))
       exit(-1);
 
@@ -57,7 +59,7 @@ usertrap(void) {
 
     syscall();
   } else if ((which_dev = devintr()) != 0) { // Ok
-  } else if (r_scause() == 0xF) { // Handle Write Page Fault
+  } else if (scause == 0xF) { // Handle Write Page Fault
     uint64 va = (uint64) r_stval();
     char *demandedPage;
     if ((va >= MAXVA) || (walkaddr(p->pagetable, va) != PRE_KERNEL_ADDRESS)) {
@@ -73,7 +75,7 @@ usertrap(void) {
     UNKNOWN:
     printf("usertrap(): unexpected scause=%p pid=%d\n"
            "            sepc=%p stval=%p\n",
-           r_scause(), p->pid, r_sepc(), r_stval()
+           scause, p->pid, r_sepc(), r_stval()
     );
     setkilled(p);
   }

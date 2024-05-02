@@ -87,7 +87,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc) {
     if (*pte & PTE_V) {
       pagetable = (pagetable_t) PTE2PA(*pte);
     } else {
-      if(!alloc || (pagetable = (pde_t*)kalloc()) == 0) {
+      if (!alloc || (pagetable = (pde_t *) kalloc()) == 0) {
         if (alloc && pagetable != 0x0)
           kfree(pagetable);
         return 0;
@@ -151,25 +151,24 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
  */
 int
 mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm) {
-  uint64 a, last;
+  uint64 currVA, lastVA;
   pte_t *pte;
 
-  if (size == 0)
+  currVA = PGROUNDDOWN(va);
+  lastVA = PGROUNDDOWN(va + size - 1);
+
+  if (currVA > lastVA)
     panic("mappages: size");
 
-  a = PGROUNDDOWN(va);
-  last = PGROUNDDOWN(va + size - 1);
+  if (walkaddr(pagetable, currVA) == PRE_KERNEL_ADDRESS) { uvmunmap(pagetable, currVA, 1, 0); }
 
-  if (walkaddr(pagetable, a) == PRE_KERNEL_ADDRESS) { uvmunmap(pagetable, a, 1, 0); }
-  for (;;) {
-    if ((pte = walk(pagetable, a, 1)) == 0)
-      return -1;
-    if (*pte & PTE_V)
-      panic("mappages: remap");
+  while (currVA <= lastVA) {
+    if ((pte = walk(pagetable, currVA, 1)) == 0) { return -1; }
+    if (*pte & PTE_V) { panic("mappages: remap"); }
+
     *pte = PA2PTE(pa) | perm | PTE_V;
-    if (a == last)
-      break;
-    a += PGSIZE;
+
+    currVA += PGSIZE;
     pa += PGSIZE;
   }
   return 0;
@@ -299,12 +298,9 @@ uvmfree(pagetable_t pagetable, uint64 sz) {
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
-// its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
-// returns 0 on success, -1 on failure.
-// frees any allocated pages on failure.
+// Given a parent process's page table, copy its memory into a child's page table.
+// Copies the page table and the physical memory.
+// Returns -1 on failure after freeing any allocated pages, else returns 0 on success.
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
   pte_t *pte;
@@ -447,6 +443,7 @@ demand_alloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
   for (uint64 currsz = oldsz; currsz < newsz; currsz += PGSIZE) {
     if (mappages(pagetable, currsz, PGSIZE, PRE_KERNEL_ADDRESS, PTE_U | PTE_R) != 0) {
       uvmdealloc(pagetable, currsz, oldsz);
+      return 0;
     }
   }
 

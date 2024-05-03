@@ -65,6 +65,36 @@ kvminithart() {
   sfence_vma();
 }
 
+// Create an empty user page table. Returns 0 if out of memory.
+pagetable_t
+uvmcreate() {
+  pagetable_t pagetable;
+  pagetable = (pagetable_t) kalloc();
+  if (pagetable == 0)
+    return 0;
+  memset(pagetable, 0, PGSIZE);
+  return pagetable;
+}
+
+// Recursively free page-table pages.
+// All leaf mappings must already have been removed.
+void
+freewalk(pagetable_t pagetable) {
+  // there are 2^9 = 512 PTEs in a page table.
+  for (int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      freewalk((pagetable_t) child);
+      pagetable[i] = 0;
+    } else if (pte & PTE_V) {
+      panic("freewalk: leaf");
+    }
+  }
+  kfree((void *) pagetable);
+}
+
 // Return the address of the PTE in page table pagetable
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page-table pages.
@@ -127,9 +157,7 @@ va2pa(pagetable_t pagetable, uint64 va) {
   else return baseAddr + (va - PGROUNDDOWN(va));
 }
 
-// add a mapping to the kernel page table.
-// only used when booting.
-// does not flush TLB or enable paging.
+// Add a mapping to the kernel page table. Only used when booting. Does not flush TLB or enable paging.
 void
 kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
   if (mappages(kpgtbl, va, sz, pa, perm) != 0)
@@ -197,20 +225,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
   }
 }
 
-// create an empty user page table.
-// returns 0 if out of memory.
-pagetable_t
-uvmcreate() {
-  pagetable_t pagetable;
-  pagetable = (pagetable_t) kalloc();
-  if (pagetable == 0)
-    return 0;
-  memset(pagetable, 0, PGSIZE);
-  return pagetable;
-}
-
-// Load the user initcode into address 0 of pagetable,
-// for the very first process.
+// Load the user initcode into address 0 of pagetable, for the very first process.
 // sz must be less than a page.
 void
 uvmfirst(pagetable_t pagetable, uchar *src, uint sz) {
@@ -236,8 +251,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm) {
 
   oldsz = PGROUNDUP(oldsz);
   for (a = oldsz; a < newsz; a += PGSIZE) {
-    mem = kalloc();
-    if (mem == 0) {
+    if ((mem = kalloc()) == 0x0) {
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
@@ -266,25 +280,6 @@ uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
   }
 
   return newsz;
-}
-
-// Recursively free page-table pages.
-// All leaf mappings must already have been removed.
-void
-freewalk(pagetable_t pagetable) {
-  // there are 2^9 = 512 PTEs in a page table.
-  for (int i = 0; i < 512; i++) {
-    pte_t pte = pagetable[i];
-    if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0) {
-      // this PTE points to a lower-level page table.
-      uint64 child = PTE2PA(pte);
-      freewalk((pagetable_t) child);
-      pagetable[i] = 0;
-    } else if (pte & PTE_V) {
-      panic("freewalk: leaf");
-    }
-  }
-  kfree((void *) pagetable);
 }
 
 // Free user memory pages, then free page-table pages.

@@ -106,6 +106,61 @@ void pageHashmap_put(HASHMAP *h, uint64 key, void *value) {
   release(&h->lock);
 }
 
+void pageHashmap_update(HASHMAP *h, uint64 key, void *(*update)(uint8, uint64, void *, va_list), ...) {
+  acquire(&h->lock);
+  uint slot = hashPage(key);
+  HASHMAP_ENTRY_NODE *entry = h->entries[slot];
+  HASHMAP_ENTRY_NODE *prev = entry;
+
+  void **res;
+  void *oldVal = 0x0;
+
+  uint8 exists = 0;
+  while (entry != 0x0) {
+    if (pageEq(entry->key, key) == 1) {
+      exists = 1;
+      oldVal = entry->value;
+      break;
+    }
+    prev = entry;
+    entry = entry->next;
+  }
+
+  va_list params;
+  va_start(params, update);
+  res = update(exists, key, oldVal, params);
+  va_end(params);
+
+  if (exists == 1) {
+    if (entry == 0x0) { panic("Hashmap Update: Found null enter\n"); }
+    if (((uint64) res[1]) == 1) {
+      if (prev == entry)
+        h->entries[slot] = entry->next;
+      prev->next = entry->next;
+      h->size -= 1;
+      kfree(entry);
+    } else {
+      entry->key = key;
+      entry->value = res[0];
+    }
+  } else if (((uint64) res[1]) != 1) {
+    // Key does not exist, create a new HASHMAP_ENTRY_NODE
+    if ((entry = ((HASHMAP_ENTRY_NODE *) kalloc())) == 0x0) {
+      if (entry) { kfree(entry); } // Unnecessary, but kept to prevent IDE warning.
+      panic("Unable to allocate memory...");
+    }
+    entry->next = h->entries[slot];
+    h->entries[slot] = entry;
+    h->size += 1;
+
+    entry->key = key;
+    entry->value = res[0];
+  }
+
+  kfree(res);
+  release(&h->lock);
+}
+
 void pageHashmap_delete(HASHMAP *h, uint64 key) {
   acquire(&h->lock);
   uint slot = hashPage(key);

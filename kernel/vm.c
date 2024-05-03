@@ -1,13 +1,18 @@
+#include <stdarg.h>
+
 #include "param.h"
 #include "types.h"
 #include "memlayout.h"
 #include "elf.h"
 #include "riscv.h"
+#include "spinlock.h"
+#include "hashmap.h"
 #include "defs.h"
 #include "fs.h"
 
 // The kernel's page table.
 pagetable_t kernel_pagetable;
+HASHMAP cowPageRefCount;
 
 extern char etext[];  // kernel.ld sets this to end of kernel code.
 
@@ -49,6 +54,7 @@ kvmmake(void) {
 // Initialize the one kernel_pagetable
 void
 kvminit(void) {
+  init_hashmap(&cowPageRefCount);
   kernel_pagetable = kvmmake();
 }
 
@@ -164,6 +170,38 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
     panic("kvmmap");
 }
 
+void **refIncrement(uint8 exists, uint64 pa, void *oldCount, va_list params) {
+  (void) (pa);
+  (void) (params);
+
+  void **res = (void **) kalloc();
+
+  uint64 newCount = 0;
+  if (exists) { newCount = (uint64) oldCount; }
+  newCount += 1;
+
+  res[0] = (void *) newCount;
+  res[1] = (void *) ((uint64) 0);
+  return res;
+}
+
+void **refDecrement(uint8 exists, uint64 pa, void *oldCount, va_list params) {
+  if (exists == 0 || (uint64) oldCount == 0) { panic("Decrementing 0 ref count...\n"); }
+
+  void **res = (void **) kalloc();
+
+  uint64 newCount = ((uint64) oldCount) - 1;
+  int do_free = va_arg(params, int);
+
+  if (newCount == 0 && do_free == 1) {
+    kfree((void *) pa);
+  }
+
+  res[0] = (void *) newCount;
+  res[1] = (void *) ((uint64) (newCount == 0));
+  return res;
+}
+
 /**
  * Create PTEs for virtual addresses starting at va that refer to
  * physical addresses starting at pa. va and size might not
@@ -193,6 +231,10 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm) {
     if (*pte & PTE_V) { panic("mappages: remap"); }
 
     *pte = PA2PTE(pa) | perm | PTE_V;
+    pa = PTE2PA(*pte);
+    if ((pa != PRE_KERNEL_ADDRESS) && ((PTE_FLAGS(*pte) & PTE_COW) != 0)) {
+      hashmap_update(&cowPageRefCount, pa, refIncrement);
+    }
 
     currVA += PGSIZE;
     pa += PGSIZE;
@@ -218,9 +260,12 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
 
     uint64 pa;
     if ((pa = PTE2PA(*pte)) != PRE_KERNEL_ADDRESS) {
-      if (do_free) { kfree((void *) pa); }
+      if ((PTE_FLAGS(*pte) & PTE_COW) != 0) {
+        hashmap_update(&cowPageRefCount, pa, refDecrement, do_free);
+      } else if (do_free) {
+        kfree((void *) pa);
+      }
     }
-
     *pte = 0;
   }
 }
@@ -291,37 +336,52 @@ uvmfree(pagetable_t pagetable, uint64 sz) {
 }
 
 int
-copyPages(pagetable_t old, pagetable_t new, uint64 va) {
+cowMapOrCopyPages(pagetable_t old, pagetable_t new, uint64 va, uint cow) {
   pte_t *pte;
-  if ((pte = walk(old, va, 0)) == 0) { panic("uvmcopy: pte should exist"); }
-  if ((*pte & PTE_V) == 0) { panic("uvmcopy: page not present"); }
+  if ((pte = walk(old, va, 0)) == 0) { panic("cowMapOrCopyPages: pte should exist"); }
+  if ((*pte & PTE_V) == 0) { panic("cowMapOrCopyPages: page not present"); }
 
   uint64 oldPA = PTE2PA(*pte);
   uint flags = PTE_FLAGS(*pte);
 
   uint64 newPA;
-  if ((newPA = (uint64) kalloc()) == 0x0) { return -1; }
-  if (oldPA != PRE_KERNEL_ADDRESS) {
-    memmove((char *) newPA, (char *) oldPA, PGSIZE);
-  }
+  if (cow == 0) {
+    if ((newPA = (uint64) kalloc()) == 0x0) { return -1; }
+    if (oldPA != PRE_KERNEL_ADDRESS) {
+      memmove((char *) newPA, (char *) oldPA, PGSIZE);
+    }
+  } else if (cow == 1) {
+    if (oldPA != PRE_KERNEL_ADDRESS) {
+      if ((flags & PTE_COW) == 0) {
+        if ((flags & PTE_W) != 0) { flags |= PTE_OLD_W; } else { flags &= (~PTE_OLD_W); }
+      }
+      flags &= (~PTE_W);
+      flags |= PTE_COW;
+    }
+    newPA = oldPA;
+  } else { return -1; }
 
-  if (mappages(new, va, PGSIZE, newPA, flags) != 0) {
-    kfree((void *) newPA);
+  // If `cow == 0`, parent's PTE is unmapped and remapped w/o changes.
+  // If `cow == 1`, parent's PTE is unmapped and remapped with new flags.
+  uvmunmap(old, va, 1, 0);
+  if ((mappages(old, va, PGSIZE, oldPA, flags) != 0) ||
+      (mappages(new, va, PGSIZE, newPA, flags) != 0)) {
+    if (cow == 0) { kfree((void *) newPA); }
     return -1;
   }
   return 0;
 }
 
 // Given a parent process's page table, copy its memory into a child's page table.
-// Copies the page table and the physical memory.
+// Copies the page table. If `cow == 0`, then also copies the physical memory.
 // Returns -1 on failure after freeing any allocated pages, else returns 0 on success.
 int
-uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, uint cow) {
   uint64 currVA;
 
   int res;
   for (currVA = 0; currVA < sz; currVA += PGSIZE) {
-    if ((res = copyPages(old, new, currVA)) < 0) {
+    if ((res = cowMapOrCopyPages(old, new, currVA, cow)) < 0) {
       if (res == -1) { uvmunmap(new, 0, currVA / PGSIZE, 1); }
       return -1;
     }
@@ -347,6 +407,7 @@ uvmclear(pagetable_t pagetable, uint64 va) {
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
   uint64 n, baseVA, basePA;
+  pte_t *pte;
 
   while (len > 0) {
     baseVA = PGROUNDDOWN(dstva);
@@ -356,10 +417,14 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
     n = PGSIZE - (dstva - baseVA);
     if (n > len) { n = len; }
 
-    if (basePA == PRE_KERNEL_ADDRESS) {
+    pte = walk(pagetable, baseVA, 0);
+    if ((*pte & PTE_COW) != 0) {
+      handleCOWPageFault(pagetable, baseVA);
+    } else if (basePA == PRE_KERNEL_ADDRESS) {
       handleDemandPageFault(pagetable, baseVA);
-      basePA = walkaddr(pagetable, baseVA);
     }
+
+    basePA = walkaddr(pagetable, baseVA);
     memmove((void *) (basePA + (dstva - baseVA)), src, n);
 
     len -= n;
@@ -462,6 +527,10 @@ demand_alloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
 }
 
 int handleDemandPageFault(pagetable_t pagetable, uint64 va) {
+  if ((PTE_FLAGS(*walk(pagetable, va, 0)) & PTE_COW) != 0) {
+    panic("Page is marked COW. Can't handle it for demand paging fault.");
+  }
+
   if (walkaddr(pagetable, va) != PRE_KERNEL_ADDRESS) { return -1; }
 
   va = PGROUNDDOWN(va);
@@ -475,5 +544,29 @@ int handleDemandPageFault(pagetable_t pagetable, uint64 va) {
     kfree(demandedPage);
     panic("mappages() failed!");
   }
+  return 0;
+}
+
+int
+handleCOWPageFault(pagetable_t pagetable, uint64 va) {
+  pte_t *pte = walk(pagetable, va, 0);
+  uint64 flags = PTE_FLAGS(*pte);
+  if ((flags & PTE_COW) == 0) { return -1; }
+
+  uint64 pa = PTE2PA(*pte);
+  uint64 newPage;
+  if ((newPage = (uint64) kalloc()) == 0x0) { return -1; }
+  if (pa != PRE_KERNEL_ADDRESS) { memmove((char *) newPage, (char *) pa, PGSIZE); }
+
+  if ((flags & PTE_OLD_W) != 0) { flags |= PTE_W; }
+  flags &= (~PTE_OLD_W);
+
+  va = PGROUNDDOWN(va);
+  uvmunmap(pagetable, va, 1, 0);
+  if (mappages(pagetable, va, PGSIZE, newPage, (int) (flags & (~PTE_COW))) != 0) {
+    kfree((void *) newPage);
+    return -1;
+  }
+
   return 0;
 }

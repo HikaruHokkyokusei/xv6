@@ -1,3 +1,5 @@
+#include <stdarg.h>
+
 struct buf;
 struct context;
 struct file;
@@ -167,7 +169,8 @@ pagetable_t     uvmcreate(void);
 void            uvmfirst(pagetable_t, uchar *, uint);
 uint64          uvmalloc(pagetable_t, uint64, uint64, int);
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
-int             uvmcopy(pagetable_t, pagetable_t, uint64);
+int             handleCOWPageFault(pagetable_t, uint64);
+int             uvmcopy(pagetable_t, pagetable_t, uint64, uint);
 void            uvmfree(pagetable_t, uint64);
 void            uvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);
@@ -188,6 +191,7 @@ void            randomSampling(void);
 void            init_hashmap(HASHMAP *);
 int             hashmap_get(HASHMAP *, uint64, void **);
 void            hashmap_put(HASHMAP *, uint64, void *);
+void            hashmap_update(HASHMAP *, uint64, void **(*)(uint8, uint64, void *, va_list), ...);
 void            hashmap_delete(HASHMAP *, uint64);
 void            hashmap_iterate(HASHMAP *, void (*)(uint64, void *));
 void            hashmap_free(HASHMAP *);
@@ -196,6 +200,7 @@ void            hashmap_free(HASHMAP *);
 void            init_pageHashmap(HASHMAP *);
 int             pageHashmap_get(HASHMAP *, uint64, void **);
 void            pageHashmap_put(HASHMAP *, uint64, void *);
+void            pageHashmap_update(HASHMAP *, uint64, void *(*)(uint8, uint64, void *, va_list), ...);
 void            pageHashmap_delete(HASHMAP *, uint64);
 void            pageHashmap_iterate(HASHMAP *, void (*)(uint64, void *));
 void            pageHashmap_free(HASHMAP *);

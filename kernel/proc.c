@@ -282,7 +282,8 @@ fork(void) {
   }
 
   // Copy user memory from parent to child.
-  if (uvmcopy(p->pagetable, np->pagetable, p->sz) < 0) {
+  // COW is disabled by passing `cow = 0` in `uvmcopy`.
+  if (uvmcopy(p->pagetable, np->pagetable, p->sz, 0) < 0) {
     freeproc(np);
     release(&np->lock);
     return -1;
@@ -411,8 +412,8 @@ wait(uint64 addr) {
         if (pp->state == ZOMBIE) {
           // Found one.
           pid = pp->pid;
-          if (addr != 0 && copyout(p->pagetable, addr, (char *) &pp->xstate,
-                                   sizeof(pp->xstate)) < 0) {
+          if (addr != 0 &&
+              copyout(p->pagetable, addr, (char *) &pp->xstate, sizeof(pp->xstate)) < 0) {
             release(&pp->lock);
             release(&wait_lock);
             return -1;
@@ -422,6 +423,7 @@ wait(uint64 addr) {
           release(&wait_lock);
           return pid;
         }
+
         release(&pp->lock);
       }
     }

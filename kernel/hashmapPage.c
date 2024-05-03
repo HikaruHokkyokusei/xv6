@@ -2,7 +2,7 @@
 #include "param.h"
 #include "riscv.h"
 #include "spinlock.h"
-#include "hashmapPage.h"
+#include "hashmap.h"
 #include "defs.h"
 
 #define ACCESS_TYPE uint64
@@ -38,7 +38,7 @@ uint8 pageEq(uint64 pa1, uint64 pa2) {
   return 1;
 }
 
-void init_pageHashmap(PAGE_HASHMAP *h) {
+void init_pageHashmap(HASHMAP *h) {
   if ((PGSIZE % GRANULARITY) != 0)
     panic("PG SIZE is not multiple of GRANULARITY");
   initlock(&h->lock, "page_hashmap_lock");
@@ -50,13 +50,13 @@ void init_pageHashmap(PAGE_HASHMAP *h) {
   release(&h->lock);
 }
 
-PAGE_HASHMAP_ENTRY_NODE *get_page_hashmap_entry(PAGE_HASHMAP *h, uint64 key) {
+HASHMAP_ENTRY_NODE *get_page_hashmap_entry(HASHMAP *h, uint64 key) {
   push_off();
   int locked = holding(&h->lock);
   pop_off();
   if (locked == 0)
     return 0x0;
-  PAGE_HASHMAP_ENTRY_NODE *entry = h->entries[hashPage(key)];
+  HASHMAP_ENTRY_NODE *entry = h->entries[hashPage(key)];
   while (entry != 0x0) {
     if (pageEq(entry->key, key) == 1)
       return entry;
@@ -65,12 +65,12 @@ PAGE_HASHMAP_ENTRY_NODE *get_page_hashmap_entry(PAGE_HASHMAP *h, uint64 key) {
   return 0x0;
 }
 
-int pageHashmap_get(PAGE_HASHMAP *h, uint64 key, void **value) {
+int pageHashmap_get(HASHMAP *h, uint64 key, void **value) {
   if (PGROUNDDOWN(key) != key)
     panic("Key is not the base PA of the page.");
   int ret = 0;
   acquire(&h->lock);
-  PAGE_HASHMAP_ENTRY_NODE *entry = get_page_hashmap_entry(h, key);
+  HASHMAP_ENTRY_NODE *entry = get_page_hashmap_entry(h, key);
   if (entry != 0x0) {
     *value = entry->value;
     ret = 1;
@@ -79,10 +79,10 @@ int pageHashmap_get(PAGE_HASHMAP *h, uint64 key, void **value) {
   return ret;
 }
 
-void pageHashmap_put(PAGE_HASHMAP *h, uint64 key, void *value) {
+void pageHashmap_put(HASHMAP *h, uint64 key, void *value) {
   acquire(&h->lock);
   uint slot = hashPage(key);
-  PAGE_HASHMAP_ENTRY_NODE *entry = h->entries[slot];
+  HASHMAP_ENTRY_NODE *entry = h->entries[slot];
 
   while (entry != 0x0) {
     if (pageEq(entry->key, key) == 1) {
@@ -91,7 +91,7 @@ void pageHashmap_put(PAGE_HASHMAP *h, uint64 key, void *value) {
     entry = entry->next;
   }
 
-  if ((entry = ((PAGE_HASHMAP_ENTRY_NODE *) kalloc())) == 0x0) {
+  if ((entry = ((HASHMAP_ENTRY_NODE *) kalloc())) == 0x0) {
     if (entry)
       kfree(entry);
     panic("Unable to allocate memory...");
@@ -106,11 +106,11 @@ void pageHashmap_put(PAGE_HASHMAP *h, uint64 key, void *value) {
   release(&h->lock);
 }
 
-void pageHashmap_delete(PAGE_HASHMAP *h, uint64 key) {
+void pageHashmap_delete(HASHMAP *h, uint64 key) {
   acquire(&h->lock);
   uint slot = hashPage(key);
-  PAGE_HASHMAP_ENTRY_NODE *entry = h->entries[slot];
-  PAGE_HASHMAP_ENTRY_NODE *prev = entry;
+  HASHMAP_ENTRY_NODE *entry = h->entries[slot];
+  HASHMAP_ENTRY_NODE *prev = entry;
   while (entry != 0x0) {
     if (pageEq(entry->key, key) == 1) {
       if (prev == entry)
@@ -126,9 +126,9 @@ void pageHashmap_delete(PAGE_HASHMAP *h, uint64 key) {
   release(&h->lock);
 }
 
-void pageHashmap_iterate(PAGE_HASHMAP *h, void (*operate)(uint64, void *)) {
+void pageHashmap_iterate(HASHMAP *h, void (*operate)(uint64, void *)) {
   acquire(&h->lock);
-  PAGE_HASHMAP_ENTRY_NODE *entry;
+  HASHMAP_ENTRY_NODE *entry;
   for (uint i = 0; i < PAGE_HASHMAP_SIZE; i++) {
     entry = h->entries[i];
     while (entry) {
@@ -139,13 +139,13 @@ void pageHashmap_iterate(PAGE_HASHMAP *h, void (*operate)(uint64, void *)) {
   release(&h->lock);
 }
 
-void pageHashmap_free(PAGE_HASHMAP *h) {
+void pageHashmap_free(HASHMAP *h) {
   // BUG: Refer `hashmap.c`.
   acquire(&h->lock);
   for (uint i = 0; i < PAGE_HASHMAP_SIZE; i++) {
-    PAGE_HASHMAP_ENTRY_NODE *entry = h->entries[i];
+    HASHMAP_ENTRY_NODE *entry = h->entries[i];
     while (entry) {
-      PAGE_HASHMAP_ENTRY_NODE *temp = entry;
+      HASHMAP_ENTRY_NODE *temp = entry;
       entry = entry->next;
       kfree(temp);
     }

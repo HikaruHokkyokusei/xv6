@@ -9,9 +9,7 @@ struct sleeplock;
 struct stat;
 struct superblock;
 typedef struct HASHMAP_ENTRY_NODE HASHMAP_ENTRY_NODE;
-typedef struct PAGE_HASHMAP_ENTRY_NODE PAGE_HASHMAP_ENTRY_NODE;
 typedef struct HASHMAP HASHMAP;
-typedef struct PAGE_HASHMAP PAGE_HASHMAP;
 
 // bio.c
 void            binit(void);
@@ -195,12 +193,12 @@ void            hashmap_iterate(HASHMAP *, void (*)(uint64, void *));
 void            hashmap_free(HASHMAP *);
 
 // hashmapPage.c
-void            init_pageHashmap(PAGE_HASHMAP *);
-int             pageHashmap_get(PAGE_HASHMAP *, uint64, void **);
-void            pageHashmap_put(PAGE_HASHMAP *, uint64, void *);
-void            pageHashmap_delete(PAGE_HASHMAP *, uint64);
-void            pageHashmap_iterate(PAGE_HASHMAP *, void (*)(uint64, void *));
-void            pageHashmap_free(PAGE_HASHMAP *);
+void            init_pageHashmap(HASHMAP *);
+int             pageHashmap_get(HASHMAP *, uint64, void **);
+void            pageHashmap_put(HASHMAP *, uint64, void *);
+void            pageHashmap_delete(HASHMAP *, uint64);
+void            pageHashmap_iterate(HASHMAP *, void (*)(uint64, void *));
+void            pageHashmap_free(HASHMAP *);
 
 // plic.c
 void            plicinit(void);

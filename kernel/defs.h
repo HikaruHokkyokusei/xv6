@@ -180,6 +180,7 @@ int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 uint64          demand_alloc(pagetable_t, uint64, uint64);
+int             handleDemandPageFault(pagetable_t, uint64);
 
 // vmm.c
 void            vmmInit(void);

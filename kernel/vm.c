@@ -549,6 +549,7 @@ int handleDemandPageFault(pagetable_t pagetable, uint64 va) {
 
 int
 handleCOWPageFault(pagetable_t pagetable, uint64 va) {
+  // BUG: Analyse why there is free list size drop when using COW forking.
   pte_t *pte = walk(pagetable, va, 0);
   uint64 flags = PTE_FLAGS(*pte);
   if ((flags & PTE_COW) == 0) { return -1; }

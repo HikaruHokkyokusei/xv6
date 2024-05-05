@@ -24,3 +24,4 @@
 #define SYS_vm_promote       23
 #define SYS_vm_demote        24
 #define SYS_va2pa            25
+#define SYS_getsize          26

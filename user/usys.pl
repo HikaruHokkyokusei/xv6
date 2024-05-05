@@ -40,3 +40,4 @@ entry("getcpu");
 entry("vm_promote");
 entry("vm_demote");
 entry("va2pa");
+entry("getsize");

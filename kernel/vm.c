@@ -527,6 +527,7 @@ demand_alloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
 }
 
 int handleDemandPageFault(pagetable_t pagetable, uint64 va) {
+  // BUG: There is a bug due to which not all user test cases pass.
   if ((PTE_FLAGS(*walk(pagetable, va, 0)) & PTE_COW) != 0) {
     panic("Page is marked COW. Can't handle it for demand paging fault.");
   }
@@ -535,14 +536,8 @@ int handleDemandPageFault(pagetable_t pagetable, uint64 va) {
 
   va = PGROUNDDOWN(va);
   uvmunmap(pagetable, va, 1, 0);
-
-  char *demandedPage;
-  if ((demandedPage = kalloc()) == 0x0) {
-    printf("System out of RAM. Killing process...\n");
+  if (uvmalloc(pagetable, va, va + PGSIZE, PTE_W) == 0) {
     return -1;
-  } else if (mappages(pagetable, va, PGSIZE, (uint64) demandedPage, PTE_R | PTE_U | PTE_W) != 0) {
-    kfree(demandedPage);
-    panic("mappages() failed!");
   }
   return 0;
 }

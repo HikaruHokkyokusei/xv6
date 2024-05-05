@@ -258,7 +258,9 @@ growproc(int n) {
      * 1. `(sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0` -- Default Prefetching
      * 2. `(sz = demand_alloc(p->pagetable, sz, sz + n)) == 0`    -- Demand Paging
      */
-    if ((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0) {
+    uint64 freePages, requiredPages;
+    if (((freePages = getFreeListSize()) < (requiredPages = (PGROUNDUP(sz + n) / PGSIZE))) ||
+        (freePages - requiredPages) < 10 || (sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0) {
       return -1;
     }
   } else if (n < 0) {

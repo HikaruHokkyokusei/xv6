@@ -29,6 +29,7 @@ int getcpu(void);
 int vm_promote(int);
 int vm_demote(int);
 int va2pa(uint64, uint8);
+int getsize();
 
 // user/ulib.c
 char* strcpy(char*, const char*);

@@ -110,3 +110,9 @@ sys_va2pa(void) {
     printf("Data: %d\n", *(uint32 *) pa);
   return pa;
 }
+
+uint64
+sys_getsize(void) {
+  struct proc *p = myproc();
+  return p->sz;
+}

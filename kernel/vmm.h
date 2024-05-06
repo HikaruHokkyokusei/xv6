@@ -3,7 +3,7 @@ typedef struct VMM_STATE {
     uint lastSamplingTime;
 
     HASHMAP registeredVMs;
-    PAGE_HASHMAP knownPages;
+    HASHMAP knownPages;
 
     struct proc *lastSampledProcess;
     uint64 lastSampledVA;

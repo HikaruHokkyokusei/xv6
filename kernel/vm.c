@@ -1,13 +1,18 @@
+#include <stdarg.h>
+
 #include "param.h"
 #include "types.h"
 #include "memlayout.h"
 #include "elf.h"
 #include "riscv.h"
+#include "spinlock.h"
+#include "hashmap.h"
 #include "defs.h"
 #include "fs.h"
 
 // The kernel's page table.
 pagetable_t kernel_pagetable;
+HASHMAP cowPageRefCount;
 
 extern char etext[];  // kernel.ld sets this to end of kernel code.
 
@@ -49,6 +54,7 @@ kvmmake(void) {
 // Initialize the one kernel_pagetable
 void
 kvminit(void) {
+  init_hashmap(&cowPageRefCount);
   kernel_pagetable = kvmmake();
 }
 
@@ -63,6 +69,36 @@ kvminithart() {
 
   // flush stale entries from the TLB.
   sfence_vma();
+}
+
+// Create an empty user page table. Returns 0 if out of memory.
+pagetable_t
+uvmcreate() {
+  pagetable_t pagetable;
+  pagetable = (pagetable_t) kalloc();
+  if (pagetable == 0)
+    return 0;
+  memset(pagetable, 0, PGSIZE);
+  return pagetable;
+}
+
+// Recursively free page-table pages.
+// All leaf mappings must already have been removed.
+void
+freewalk(pagetable_t pagetable) {
+  // there are 2^9 = 512 PTEs in a page table.
+  for (int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      freewalk((pagetable_t) child);
+      pagetable[i] = 0;
+    } else if (pte & PTE_V) {
+      panic("freewalk: leaf");
+    }
+  }
+  kfree((void *) pagetable);
 }
 
 // Return the address of the PTE in page table pagetable
@@ -87,7 +123,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc) {
     if (*pte & PTE_V) {
       pagetable = (pagetable_t) PTE2PA(*pte);
     } else {
-      if(!alloc || (pagetable = (pde_t*)kalloc()) == 0) {
+      if (!alloc || (pagetable = (pde_t *) kalloc()) == 0) {
         if (alloc && pagetable != 0x0)
           kfree(pagetable);
         return 0;
@@ -127,13 +163,43 @@ va2pa(pagetable_t pagetable, uint64 va) {
   else return baseAddr + (va - PGROUNDDOWN(va));
 }
 
-// add a mapping to the kernel page table.
-// only used when booting.
-// does not flush TLB or enable paging.
+// Add a mapping to the kernel page table. Only used when booting. Does not flush TLB or enable paging.
 void
 kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
   if (mappages(kpgtbl, va, sz, pa, perm) != 0)
     panic("kvmmap");
+}
+
+void **refIncrement(uint8 exists, uint64 pa, void *oldCount, va_list params) {
+  (void) (pa);
+  (void) (params);
+
+  void **res = (void **) kalloc();
+
+  uint64 newCount = 0;
+  if (exists) { newCount = (uint64) oldCount; }
+  newCount += 1;
+
+  res[0] = (void *) newCount;
+  res[1] = (void *) ((uint64) 0);
+  return res;
+}
+
+void **refDecrement(uint8 exists, uint64 pa, void *oldCount, va_list params) {
+  if (exists == 0 || (uint64) oldCount == 0) { panic("Decrementing 0 ref count...\n"); }
+
+  void **res = (void **) kalloc();
+
+  uint64 newCount = ((uint64) oldCount) - 1;
+  int do_free = va_arg(params, int);
+
+  if (newCount == 0 && do_free == 1) {
+    kfree((void *) pa);
+  }
+
+  res[0] = (void *) newCount;
+  res[1] = (void *) ((uint64) (newCount == 0));
+  return res;
 }
 
 /**
@@ -151,25 +217,26 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
  */
 int
 mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm) {
-  uint64 a, last;
+  uint64 currVA, lastVA;
   pte_t *pte;
 
-  if (size == 0)
+  currVA = PGROUNDDOWN(va);
+  lastVA = PGROUNDDOWN(va + size - 1);
+
+  if (currVA > lastVA)
     panic("mappages: size");
 
-  a = PGROUNDDOWN(va);
-  last = PGROUNDDOWN(va + size - 1);
+  while (currVA <= lastVA) {
+    if ((pte = walk(pagetable, currVA, 1)) == 0) { return -1; }
+    if (*pte & PTE_V) { panic("mappages: remap"); }
 
-  if (walkaddr(pagetable, a) == PRE_KERNEL_ADDRESS) { uvmunmap(pagetable, a, 1, 0); }
-  for (;;) {
-    if ((pte = walk(pagetable, a, 1)) == 0)
-      return -1;
-    if (*pte & PTE_V)
-      panic("mappages: remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
-    if (a == last)
-      break;
-    a += PGSIZE;
+    pa = PTE2PA(*pte);
+    if ((pa != PRE_KERNEL_ADDRESS) && ((PTE_FLAGS(*pte) & PTE_COW) != 0)) {
+      hashmap_update(&cowPageRefCount, pa, refIncrement);
+    }
+
+    currVA += PGSIZE;
     pa += PGSIZE;
   }
   return 0;
@@ -190,9 +257,12 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
       panic("uvmunmap: not mapped");
     if (PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
-    if (do_free) {
-      uint64 pa = PTE2PA(*pte);
-      if (pa != PRE_KERNEL_ADDRESS) {
+
+    uint64 pa;
+    if ((pa = PTE2PA(*pte)) != PRE_KERNEL_ADDRESS) {
+      if ((PTE_FLAGS(*pte) & PTE_COW) != 0) {
+        hashmap_update(&cowPageRefCount, pa, refDecrement, do_free);
+      } else if (do_free) {
         kfree((void *) pa);
       }
     }
@@ -200,20 +270,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
   }
 }
 
-// create an empty user page table.
-// returns 0 if out of memory.
-pagetable_t
-uvmcreate() {
-  pagetable_t pagetable;
-  pagetable = (pagetable_t) kalloc();
-  if (pagetable == 0)
-    return 0;
-  memset(pagetable, 0, PGSIZE);
-  return pagetable;
-}
-
-// Load the user initcode into address 0 of pagetable,
-// for the very first process.
+// Load the user initcode into address 0 of pagetable, for the very first process.
 // sz must be less than a page.
 void
 uvmfirst(pagetable_t pagetable, uchar *src, uint sz) {
@@ -239,8 +296,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm) {
 
   oldsz = PGROUNDUP(oldsz);
   for (a = oldsz; a < newsz; a += PGSIZE) {
-    mem = kalloc();
-    if (mem == 0) {
+    if ((mem = kalloc()) == 0x0) {
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
@@ -271,27 +327,7 @@ uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
   return newsz;
 }
 
-// Recursively free page-table pages.
-// All leaf mappings must already have been removed.
-void
-freewalk(pagetable_t pagetable) {
-  // there are 2^9 = 512 PTEs in a page table.
-  for (int i = 0; i < 512; i++) {
-    pte_t pte = pagetable[i];
-    if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0) {
-      // this PTE points to a lower-level page table.
-      uint64 child = PTE2PA(pte);
-      freewalk((pagetable_t) child);
-      pagetable[i] = 0;
-    } else if (pte & PTE_V) {
-      panic("freewalk: leaf");
-    }
-  }
-  kfree((void *) pagetable);
-}
-
-// Free user memory pages,
-// then free page-table pages.
+// Free user memory pages, then free page-table pages.
 void
 uvmfree(pagetable_t pagetable, uint64 sz) {
   if (sz > 0)
@@ -299,39 +335,58 @@ uvmfree(pagetable_t pagetable, uint64 sz) {
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
-// its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
-// returns 0 on success, -1 on failure.
-// frees any allocated pages on failure.
 int
-uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
+cowMapOrCopyPages(pagetable_t old, pagetable_t new, uint64 va, uint cow) {
   pte_t *pte;
-  uint64 pa, i;
-  uint flags;
-  char *mem;
+  if ((pte = walk(old, va, 0)) == 0) { panic("cowMapOrCopyPages: pte should exist"); }
+  if ((*pte & PTE_V) == 0) { panic("cowMapOrCopyPages: page not present"); }
 
-  for (i = 0; i < sz; i += PGSIZE) {
-    if ((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
-    if ((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
-    pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if ((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char *) pa, PGSIZE);
-    if (mappages(new, i, PGSIZE, (uint64) mem, flags) != 0) {
-      kfree(mem);
-      goto err;
+  uint64 oldPA = PTE2PA(*pte);
+  uint flags = PTE_FLAGS(*pte);
+
+  uint64 newPA;
+  if (cow == 0) {
+    if ((newPA = (uint64) kalloc()) == 0x0) { return -1; }
+    if (oldPA != PRE_KERNEL_ADDRESS) {
+      memmove((char *) newPA, (char *) oldPA, PGSIZE);
+    }
+  } else if (cow == 1) {
+    if (oldPA != PRE_KERNEL_ADDRESS) {
+      if ((flags & PTE_COW) == 0) {
+        if ((flags & PTE_W) != 0) { flags |= PTE_OLD_W; } else { flags &= (~PTE_OLD_W); }
+      }
+      flags &= (~PTE_W);
+      flags |= PTE_COW;
+    }
+    newPA = oldPA;
+  } else { return -1; }
+
+  // If `cow == 0`, parent's PTE is unmapped and remapped w/o changes.
+  // If `cow == 1`, parent's PTE is unmapped and remapped with new flags.
+  uvmunmap(old, va, 1, 0);
+  if ((mappages(old, va, PGSIZE, oldPA, flags) != 0) ||
+      (mappages(new, va, PGSIZE, newPA, flags) != 0)) {
+    if (cow == 0) { kfree((void *) newPA); }
+    return -1;
+  }
+  return 0;
+}
+
+// Given a parent process's page table, copy its memory into a child's page table.
+// Copies the page table. If `cow == 0`, then also copies the physical memory.
+// Returns -1 on failure after freeing any allocated pages, else returns 0 on success.
+int
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, uint cow) {
+  uint64 currVA;
+
+  int res;
+  for (currVA = 0; currVA < sz; currVA += PGSIZE) {
+    if ((res = cowMapOrCopyPages(old, new, currVA, cow)) < 0) {
+      if (res == -1) { uvmunmap(new, 0, currVA / PGSIZE, 1); }
+      return -1;
     }
   }
   return 0;
-
-  err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
-  return -1;
 }
 
 // mark a PTE invalid for user access.
@@ -351,21 +406,30 @@ uvmclear(pagetable_t pagetable, uint64 va) {
 // Return 0 on success, -1 on error.
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
-  uint64 n, va0, pa0;
+  uint64 n, baseVA, basePA;
+  pte_t *pte;
 
   while (len > 0) {
-    va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
-    if (pa0 == 0)
-      return -1;
-    n = PGSIZE - (dstva - va0);
-    if (n > len)
-      n = len;
-    memmove((void *) (pa0 + (dstva - va0)), src, n);
+    baseVA = PGROUNDDOWN(dstva);
+    basePA = walkaddr(pagetable, baseVA);
+    if (basePA == 0) { return -1; }
+
+    n = PGSIZE - (dstva - baseVA);
+    if (n > len) { n = len; }
+
+    pte = walk(pagetable, baseVA, 0);
+    if ((*pte & PTE_COW) != 0) {
+      handleCOWPageFault(pagetable, baseVA);
+    } else if (basePA == PRE_KERNEL_ADDRESS) {
+      handleDemandPageFault(pagetable, baseVA);
+    }
+
+    basePA = walkaddr(pagetable, baseVA);
+    memmove((void *) (basePA + (dstva - baseVA)), src, n);
 
     len -= n;
     src += n;
-    dstva = va0 + PGSIZE;
+    dstva = baseVA + PGSIZE;
   }
   return 0;
 }
@@ -375,21 +439,25 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
 // Return 0 on success, -1 on error.
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len) {
-  uint64 n, va0, pa0;
+  uint64 n, baseVA, basePA;
 
   while (len > 0) {
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if (pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if (n > len)
-      n = len;
-    memmove(dst, (void *) (pa0 + (srcva - va0)), n);
+    baseVA = PGROUNDDOWN(srcva);
+    basePA = walkaddr(pagetable, baseVA);
+    if (basePA == 0) { return -1; }
+
+    n = PGSIZE - (srcva - baseVA);
+    if (n > len) { n = len; }
+
+    if (basePA == PRE_KERNEL_ADDRESS) {
+      handleDemandPageFault(pagetable, baseVA);
+      basePA = walkaddr(pagetable, baseVA);
+    }
+    memmove(dst, (void *) (basePA + (srcva - baseVA)), n);
 
     len -= n;
     dst += n;
-    srcva = va0 + PGSIZE;
+    srcva = baseVA + PGSIZE;
   }
   return 0;
 }
@@ -400,19 +468,23 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len) {
 // Return 0 on success, -1 on error.
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max) {
-  uint64 n, va0, pa0;
+  uint64 n, baseVA, basePA;
   int got_null = 0;
 
   while (got_null == 0 && max > 0) {
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if (pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if (n > max)
-      n = max;
+    baseVA = PGROUNDDOWN(srcva);
+    basePA = walkaddr(pagetable, baseVA);
+    if (basePA == 0) { return -1; }
 
-    char *p = (char *) (pa0 + (srcva - va0));
+    n = PGSIZE - (srcva - baseVA);
+    if (n > max) { n = max; }
+
+    if (basePA == PRE_KERNEL_ADDRESS) {
+      handleDemandPageFault(pagetable, baseVA);
+      basePA = walkaddr(pagetable, baseVA);
+    }
+
+    char *p = (char *) (basePA + (srcva - baseVA));
     while (n > 0) {
       if (*p == '\0') {
         *dst = '\0';
@@ -427,7 +499,7 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max) {
       dst++;
     }
 
-    srcva = va0 + PGSIZE;
+    srcva = baseVA + PGSIZE;
   }
   if (got_null) {
     return 0;
@@ -445,10 +517,52 @@ demand_alloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
   oldsz = PGROUNDUP(oldsz);
 
   for (uint64 currsz = oldsz; currsz < newsz; currsz += PGSIZE) {
-    if (mappages(pagetable, currsz, PGSIZE, PRE_KERNEL_ADDRESS, PTE_U | PTE_R) != 0) {
+    if (mappages(pagetable, currsz, PGSIZE, PRE_KERNEL_ADDRESS, PTE_U) != 0) {
       uvmdealloc(pagetable, currsz, oldsz);
+      return 0;
     }
   }
 
   return newsz;
+}
+
+int handleDemandPageFault(pagetable_t pagetable, uint64 va) {
+  // BUG: There is a bug due to which not all user test cases pass.
+  if ((PTE_FLAGS(*walk(pagetable, va, 0)) & PTE_COW) != 0) {
+    panic("Page is marked COW. Can't handle it for demand paging fault.");
+  }
+
+  if (walkaddr(pagetable, va) != PRE_KERNEL_ADDRESS) { return -1; }
+
+  va = PGROUNDDOWN(va);
+  uvmunmap(pagetable, va, 1, 0);
+  if (uvmalloc(pagetable, va, va + PGSIZE, PTE_W) == 0) {
+    return -1;
+  }
+  return 0;
+}
+
+int
+handleCOWPageFault(pagetable_t pagetable, uint64 va) {
+  // BUG: Analyse why there is free list size drop when using COW forking.
+  pte_t *pte = walk(pagetable, va, 0);
+  uint64 flags = PTE_FLAGS(*pte);
+  if ((flags & PTE_COW) == 0) { return -1; }
+
+  uint64 pa = PTE2PA(*pte);
+  uint64 newPage;
+  if ((newPage = (uint64) kalloc()) == 0x0) { return -1; }
+  if (pa != PRE_KERNEL_ADDRESS) { memmove((char *) newPage, (char *) pa, PGSIZE); }
+
+  if ((flags & PTE_OLD_W) != 0) { flags |= PTE_W; }
+  flags &= (~PTE_OLD_W);
+
+  va = PGROUNDDOWN(va);
+  uvmunmap(pagetable, va, 1, 0);
+  if (mappages(pagetable, va, PGSIZE, newPage, (int) (flags & (~PTE_COW))) != 0) {
+    kfree((void *) newPage);
+    return -1;
+  }
+
+  return 0;
 }

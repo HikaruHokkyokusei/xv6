@@ -258,7 +258,9 @@ growproc(int n) {
      * 1. `(sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0` -- Default Prefetching
      * 2. `(sz = demand_alloc(p->pagetable, sz, sz + n)) == 0`    -- Demand Paging
      */
-    if ((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0) {
+    uint64 freePages, requiredPages;
+    if (((freePages = getFreeListSize()) < (requiredPages = (PGROUNDUP(sz + n) / PGSIZE))) ||
+        (freePages - requiredPages) < 10 || (sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0) {
       return -1;
     }
   } else if (n < 0) {
@@ -282,7 +284,8 @@ fork(void) {
   }
 
   // Copy user memory from parent to child.
-  if (uvmcopy(p->pagetable, np->pagetable, p->sz) < 0) {
+  // COW is disabled by passing `cow = 0` in `uvmcopy`.
+  if (uvmcopy(p->pagetable, np->pagetable, p->sz, 0) < 0) {
     freeproc(np);
     release(&np->lock);
     return -1;
@@ -411,8 +414,8 @@ wait(uint64 addr) {
         if (pp->state == ZOMBIE) {
           // Found one.
           pid = pp->pid;
-          if (addr != 0 && copyout(p->pagetable, addr, (char *) &pp->xstate,
-                                   sizeof(pp->xstate)) < 0) {
+          if (addr != 0 &&
+              copyout(p->pagetable, addr, (char *) &pp->xstate, sizeof(pp->xstate)) < 0) {
             release(&pp->lock);
             release(&wait_lock);
             return -1;
@@ -422,6 +425,7 @@ wait(uint64 addr) {
           release(&wait_lock);
           return pid;
         }
+
         release(&pp->lock);
       }
     }

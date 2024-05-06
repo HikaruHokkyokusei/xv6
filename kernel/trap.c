@@ -44,7 +44,9 @@ usertrap(void) {
   struct proc *p = myproc();
   p->trapframe->epc = r_sepc(); // save user program counter.
 
-  if (r_scause() == 0x8) { // system call
+  uint64 scause = r_scause();
+
+  if (scause == 0x8) { // system call
     if (killed(p))
       exit(-1);
 
@@ -57,23 +59,50 @@ usertrap(void) {
 
     syscall();
   } else if ((which_dev = devintr()) != 0) { // Ok
-  } else if (r_scause() == 0xF) { // Handle Write Page Fault
-    uint64 va = (uint64) r_stval();
-    char *demandedPage;
-    if ((va >= MAXVA) || (walkaddr(p->pagetable, va) != PRE_KERNEL_ADDRESS)) {
-      goto UNKNOWN; // Trap not caused by Demand Paging...
-    } else if ((demandedPage = kalloc()) == 0x0) {
-      printf("System out of RAM. Killing process: %d\n", p->pid);
-      setkilled(p); // Out of RAM. Kill the user process...
-    } else if (mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64) demandedPage, PTE_R | PTE_U | PTE_W) != 0) {
-      kfree(demandedPage);
-      panic("mappages() failed!");
+  } else if (scause == 0xC || scause == 0xD || scause == 0xF) {
+    /* 0xC => Instruction PG Fault
+     * 0xD => Load        PG Fault
+     * 0xF => Write       PG Fault
+     * */
+    uint64 va = r_stval();
+    pte_t *pte;
+    if ((va >= MAXVA) || (pte = walk(p->pagetable, va, 0)) == 0x0 ||
+        (*pte & PTE_U) == 0 || (*pte & PTE_V) == 0) { goto UNKNOWN; } // Trap cause unknown.
+
+    // Must handle COW Faults first and Demand Paging Faults later.
+    if ((PTE_FLAGS(*pte) & PTE_COW) != 0) { // Trap caused by COW.
+      /* Let us consider the case when `READ` Page Fault happens when the PTE is marked `COW`.
+       * The whole point of COW means that the process can read but not write. So, if the
+       * parent process had access to a PA, then we will never end up here. If we do, then it
+       * means that the COW setup code has some bug in it.
+       * */
+      if ((scause != 0xC && scause != 0xF) || handleCOWPageFault(p->pagetable, va) == -1) {
+        goto UNKNOWN;
+      }
+    } else if (PTE2PA(*pte) == PRE_KERNEL_ADDRESS) { // Trap caused by Demand Paging.
+      if (scause == 0xC) { goto UNKNOWN; }
+
+      /* The other case can be Page Fault due to Demand Paging. This is somewhat tricky and
+       * depends upon the choice of the kernel developer. Reaching here with a demand page
+       * fault means that the process is trying to read its memory location without ever
+       * writing it to it. Should this be allowed or not? Because, usually it is allowed with
+       * the memory read returning the default value for that data type. Even if we don't want
+       * to do that, this approach of demand paging creates a PTE that points to the
+       * `PRE_KERNEL_ADDRESS`, and this cannot be exposed to user process. Therefore, the below
+       * approach needs to mark unallocated demand pages as unreadable and immediately handle
+       * the first read to the location with an empty page allocation. It will handle read page
+       * fault for demand paging just like it handles the write case for demand paging,
+       * therefore, we are not introducing if condition over 0xF or 0xD.
+       * */
+      if (handleDemandPageFault(p->pagetable, va) == -1) { goto UNKNOWN; }
+    } else {
+      goto UNKNOWN;
     }
   } else {
     UNKNOWN:
     printf("usertrap(): unexpected scause=%p pid=%d\n"
            "            sepc=%p stval=%p\n",
-           r_scause(), p->pid, r_sepc(), r_stval()
+           scause, p->pid, r_sepc(), r_stval()
     );
     setkilled(p);
   }

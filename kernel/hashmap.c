@@ -5,7 +5,7 @@
 #include "hashmap.h"
 #include "defs.h"
 
-uint hash(int key) {
+uint hash(uint64 key) {
   return key % HASHMAP_SIZE;
 }
 
@@ -20,7 +20,7 @@ void init_hashmap(HASHMAP *h) {
   release(&h->lock);
 }
 
-HASHMAP_ENTRY_NODE *get_hashmap_entry(HASHMAP *h, int key) {
+HASHMAP_ENTRY_NODE *get_hashmap_entry(HASHMAP *h, uint64 key) {
   push_off();
   int locked = holding(&h->lock);
   pop_off();
@@ -37,7 +37,7 @@ HASHMAP_ENTRY_NODE *get_hashmap_entry(HASHMAP *h, int key) {
   return 0x0;
 }
 
-int hashmap_get(HASHMAP *h, int key, void **value) {
+int hashmap_get(HASHMAP *h, uint64 key, void **value) {
   int ret = 0;
   acquire(&h->lock);
   HASHMAP_ENTRY_NODE *entry = get_hashmap_entry(h, key);
@@ -49,7 +49,7 @@ int hashmap_get(HASHMAP *h, int key, void **value) {
   return ret;
 }
 
-void hashmap_put(HASHMAP *h, int key, void *value) {
+void hashmap_put(HASHMAP *h, uint64 key, void *value) {
   acquire(&h->lock);
   uint slot = hash(key);
   HASHMAP_ENTRY_NODE *entry = h->entries[slot];
@@ -77,7 +77,62 @@ void hashmap_put(HASHMAP *h, int key, void *value) {
   release(&h->lock);
 }
 
-void hashmap_delete(HASHMAP *h, int key) {
+void hashmap_update(HASHMAP *h, uint64 key, void **(*update)(uint8, uint64, void *, va_list), ...) {
+  acquire(&h->lock);
+  uint slot = hash(key);
+  HASHMAP_ENTRY_NODE *entry = h->entries[slot];
+  HASHMAP_ENTRY_NODE *prev = entry;
+
+  void **res;
+  void *oldVal = 0x0;
+
+  uint8 exists = 0;
+  while (entry != 0x0) {
+    if (entry->key == key) {
+      exists = 1;
+      oldVal = entry->value;
+      break;
+    }
+    prev = entry;
+    entry = entry->next;
+  }
+
+  va_list params;
+  va_start(params, update);
+  res = update(exists, key, oldVal, params);
+  va_end(params);
+
+  if (exists == 1) {
+    if (entry == 0x0) { panic("Hashmap Update: Found null enter\n"); }
+    if (((uint64) res[1]) == 1) {
+      if (prev == entry)
+        h->entries[slot] = entry->next;
+      prev->next = entry->next;
+      h->size -= 1;
+      kfree(entry);
+    } else {
+      entry->key = key;
+      entry->value = res[0];
+    }
+  } else if (((uint64) res[1]) != 1) {
+    // Key does not exist, create a new HASHMAP_ENTRY_NODE
+    if ((entry = ((HASHMAP_ENTRY_NODE *) kalloc())) == 0x0) {
+      if (entry) { kfree(entry); } // Unnecessary, but kept to prevent IDE warning.
+      panic("Unable to allocate memory...");
+    }
+    entry->next = h->entries[slot];
+    h->entries[slot] = entry;
+    h->size += 1;
+
+    entry->key = key;
+    entry->value = res[0];
+  }
+
+  kfree(res);
+  release(&h->lock);
+}
+
+void hashmap_delete(HASHMAP *h, uint64 key) {
   acquire(&h->lock);
   uint slot = hash(key);
   HASHMAP_ENTRY_NODE *entry = h->entries[slot];
@@ -97,7 +152,7 @@ void hashmap_delete(HASHMAP *h, int key) {
   release(&h->lock);
 }
 
-void hashmap_iterate(HASHMAP *h, void (*operate)(int, void *)) {
+void hashmap_iterate(HASHMAP *h, void (*operate)(uint64, void *)) {
   acquire(&h->lock);
   HASHMAP_ENTRY_NODE *entry;
   for (uint i = 0; i < HASHMAP_SIZE; i++) {

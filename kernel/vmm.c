@@ -2,9 +2,8 @@
 #include "param.h"
 #include "riscv.h"
 #include "spinlock.h"
-#include "proc.h"
 #include "hashmap.h"
-#include "hashmapPage.h"
+#include "proc.h"
 #include "vmm.h"
 #include "defs.h"
 
@@ -38,9 +37,9 @@ void randomSampling() {
   release(&vmmState.samplingTimeLock);
 }
 
-void printRegisteredVM(int key, void *value) {
+void printRegisteredVM(uint64 key, void *value) {
   struct proc *p = (struct proc *) value;
-  printf("PID: %d --> VM: (%d->%d, %p)\n", key, p->parent->pid, p->pid, p);
+  printf("PID: %d --> VM: (%d->%d, %p)\n", (int) key, p->parent->pid, p->pid, p);
 }
 
 void printRegisteredVMs() {

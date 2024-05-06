@@ -1,13 +1,13 @@
 // init: The initial user-level program
 
-#include "kernel/types.h"
-#include "kernel/stat.h"
-#include "kernel/spinlock.h"
-#include "kernel/sleeplock.h"
-#include "kernel/fs.h"
-#include "kernel/file.h"
-#include "user/user.h"
-#include "kernel/fcntl.h"
+#include "./../kernel/types.h"
+#include "./../kernel/stat.h"
+#include "./../kernel/spinlock.h"
+#include "./../kernel/sleeplock.h"
+#include "./../kernel/fs.h"
+#include "./../kernel/file.h"
+#include "./../user/user.h"
+#include "./../kernel/fcntl.h"
 
 char *argv[] = { "sh", 0 };
 
@@ -24,7 +24,8 @@ main(void)
   dup(0);  // stderr
 
   for(;;){
-    printf("init: starting sh\n");
+    printf("User process `init.c` starting `sh`. "
+           "Current Executing CPU: %d\n", getcpu());
     pid = fork();
     if(pid < 0){
       printf("init: fork failed\n");

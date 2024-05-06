@@ -1,3 +1,5 @@
+#include <stdarg.h>
+
 struct buf;
 struct context;
 struct file;
@@ -8,6 +10,8 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+typedef struct HASHMAP_ENTRY_NODE HASHMAP_ENTRY_NODE;
+typedef struct HASHMAP HASHMAP;
 
 // bio.c
 void            binit(void);
@@ -63,6 +67,7 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+uint64          getFreeListSize();
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -85,6 +90,7 @@ void            printfinit(void);
 int             cpuid(void);
 void            exit(int);
 int             fork(void);
+struct proc*    get_proc_from_pid(int);
 int             growproc(int);
 void            proc_mapstacks(pagetable_t);
 pagetable_t     proc_pagetable(struct proc *);
@@ -164,15 +170,41 @@ pagetable_t     uvmcreate(void);
 void            uvmfirst(pagetable_t, uchar *, uint);
 uint64          uvmalloc(pagetable_t, uint64, uint64, int);
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
-int             uvmcopy(pagetable_t, pagetable_t, uint64);
+int             handleCOWPageFault(pagetable_t, uint64);
+int             uvmcopy(pagetable_t, pagetable_t, uint64, uint);
 void            uvmfree(pagetable_t, uint64);
 void            uvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);
 pte_t *         walk(pagetable_t, uint64, int);
 uint64          walkaddr(pagetable_t, uint64);
+uint64          va2pa(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+uint64          demand_alloc(pagetable_t, uint64, uint64);
+int             handleDemandPageFault(pagetable_t, uint64);
+
+// vmm.c
+void            vmmInit(void);
+void            randomSampling(void);
+
+// hashmap.c
+void            init_hashmap(HASHMAP *);
+int             hashmap_get(HASHMAP *, uint64, void **);
+void            hashmap_put(HASHMAP *, uint64, void *);
+void            hashmap_update(HASHMAP *, uint64, void **(*)(uint8, uint64, void *, va_list), ...);
+void            hashmap_delete(HASHMAP *, uint64);
+void            hashmap_iterate(HASHMAP *, void (*)(uint64, void *));
+void            hashmap_free(HASHMAP *);
+
+// hashmapPage.c
+void            init_pageHashmap(HASHMAP *);
+int             pageHashmap_get(HASHMAP *, uint64, void **);
+void            pageHashmap_put(HASHMAP *, uint64, void *);
+void            pageHashmap_update(HASHMAP *, uint64, void *(*)(uint8, uint64, void *, va_list), ...);
+void            pageHashmap_delete(HASHMAP *, uint64);
+void            pageHashmap_iterate(HASHMAP *, void (*)(uint64, void *));
+void            pageHashmap_free(HASHMAP *);
 
 // plic.c
 void            plicinit(void);

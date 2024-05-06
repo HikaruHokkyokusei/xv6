@@ -36,3 +36,8 @@ entry("getpid");
 entry("sbrk");
 entry("sleep");
 entry("uptime");
+entry("getcpu");
+entry("vm_promote");
+entry("vm_demote");
+entry("va2pa");
+entry("getsize");
